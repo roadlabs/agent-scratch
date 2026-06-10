@@ -6,6 +6,18 @@ import {maybeRunSelfTest, maybeRunAgentTest} from './dev/self-test';
 import {localeToLang, STRINGS} from './i18n';
 import './app.css';
 
+// scratch-gui 菜单栏缺失的中文翻译（scratch-l10n暂无）
+const GUI_OVERRIDE_MESSAGES = {
+    'zh-cn': {
+        'gui.menuBar.settings': '设置',
+        'gui.menuBar.debug': '调试'
+    },
+    'zh-tw': {
+        'gui.menuBar.settings': '設置',
+        'gui.menuBar.debug': '調試'
+    }
+};
+
 // 以 Scratch 的语言(vm.getLocale())为单一真实来源，返回 'ja' | 'en' 的钩子。
 // 由于 VM 不发出 locale 变更事件，使用轻量轮询监控，
 // 仅在值变化时更新 state（避免不必要的重渲染）。
@@ -48,6 +60,17 @@ const App = () => {
     const [chatCollapsed, setChatCollapsed] = useState(false);
     const lang = useScratchLang(vm);
     const handleVmInit = useCallback(newVm => {
+        // 在 GUI 调用 setLocale 之前，先包装它以注入我们的覆盖消息
+        const vmLocale = newVm.getLocale ? newVm.getLocale() : null;
+        if (vmLocale && GUI_OVERRIDE_MESSAGES[vmLocale]) {
+            const originalSetLocale = newVm.setLocale.bind(newVm);
+            newVm.setLocale = (locale, messages) => {
+                // 合并我们的覆盖消息与 GUI 传入的消息
+                const mergedMessages = {...messages, ...GUI_OVERRIDE_MESSAGES[vmLocale]};
+                return originalSetLocale(locale, mergedMessages);
+            };
+        }
+
         window.vm = newVm; // 调试用
         setVm(newVm);
         maybeRunSelfTest(newVm);
