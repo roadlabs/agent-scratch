@@ -102,11 +102,13 @@ const App = () => {
     const handleVmInit = useCallback(newVm => {
         // 在 GUI 调用 setLocale 之前，先包装它以注入我们的覆盖消息
         const vmLocale = newVm.getLocale ? newVm.getLocale() : null;
-        if (vmLocale && GUI_OVERRIDE_MESSAGES[vmLocale]) {
+        // 将 locale 转为小写以匹配 GUI_OVERRIDE_MESSAGES 的 key
+        const overrideKey = vmLocale ? vmLocale.toLowerCase() : null;
+        if (overrideKey && GUI_OVERRIDE_MESSAGES[overrideKey]) {
             const originalSetLocale = newVm.setLocale.bind(newVm);
             newVm.setLocale = (locale, messages) => {
                 // 合并我们的覆盖消息与 GUI 传入的消息
-                const mergedMessages = {...messages, ...GUI_OVERRIDE_MESSAGES[vmLocale]};
+                const mergedMessages = {...messages, ...GUI_OVERRIDE_MESSAGES[overrideKey]};
                 return originalSetLocale(locale, mergedMessages);
             };
         }
