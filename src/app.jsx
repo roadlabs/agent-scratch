@@ -82,6 +82,8 @@ const App = () => {
                     return;
                 }
 
+                console.log('[projectChange] tick: count=' + count, 'names=', targetNames, 'prev=', prevTargetCount.current);
+
                 // 如果 targets 数量恢复到初始值 0（新建项目默认状态），
                 // 且之前有记录过不同的值，则认为是新建项目
                 if (count === 0 && prevTargetCount.current !== null) {
