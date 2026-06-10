@@ -58,7 +58,26 @@ const WrappedGui = AppStateHOC(DefaultProjectHOC(GUI));
 const App = () => {
     const [vm, setVm] = useState(null);
     const [chatCollapsed, setChatCollapsed] = useState(false);
+    const [projectKey, setProjectKey] = useState(0); // 用于重置聊天历史
     const lang = useScratchLang(vm);
+    const prevProjectId = useRef(null);
+
+    // 检测项目切换并重置聊天历史
+    useEffect(() => {
+        if (!vm) return;
+        const checkProjectChange = () => {
+            try {
+                const pid = vm.getProjectId ? vm.getProjectId() : null;
+                if (pid !== null && pid !== prevProjectId.current) {
+                    prevProjectId.current = pid;
+                    setProjectKey(k => k + 1);
+                }
+            } catch (_) { /* ignore */ }
+        };
+        checkProjectChange();
+        const id = setInterval(checkProjectChange, 1000);
+        return () => clearInterval(id);
+    }, [vm]);
     const handleVmInit = useCallback(newVm => {
         // 在 GUI 调用 setLocale 之前，先包装它以注入我们的覆盖消息
         const vmLocale = newVm.getLocale ? newVm.getLocale() : null;
@@ -108,6 +127,7 @@ const App = () => {
                 lang={lang}
                 collapsed={chatCollapsed}
                 onToggleCollapse={() => setChatCollapsed(c => !c)}
+                projectKey={projectKey}
             />
         </div>
     );

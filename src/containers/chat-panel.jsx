@@ -8,7 +8,7 @@ import {STRINGS, errorPrefix} from '../i18n';
 const STORAGE_KEY = 'agent-scratch-api-key';
 const DISCLOSURE_STORAGE_KEY = 'agent-scratch-disclosure-accepted';
 
-const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse}) => {
+const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) => {
     const t = STRINGS[lang];
     const [messages, setMessages] = useState([]);
     const [running, setRunning] = useState(false);
@@ -27,6 +27,14 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse}) => {
 
     // Anthropic API 格式的对话历史（支持多轮）
     const apiMessagesRef = useRef([]);
+
+    // 项目切换时清空聊天历史
+    useEffect(() => {
+        if (projectKey > 0) {
+            setMessages([]);
+            apiMessagesRef.current = [];
+        }
+    }, [projectKey]);
     const abortRef = useRef(null);
 
     const appendMessage = useCallback(m => {
