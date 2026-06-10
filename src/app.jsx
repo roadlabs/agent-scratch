@@ -66,7 +66,6 @@ const App = () => {
     // 检测项目切换并重置聊天历史
     // 策略：当 targets 的 ID 集合发生显著变化时（新项目会有完全不同的 ID）
     useEffect(() => {
-        console.log('[projectChange] useEffect running, vm=', !!vm, 'vm.runtime=', !!(vm && vm.runtime));
         if (!vm || !vm.runtime) return;
 
         const checkProjectChange = () => {
@@ -81,18 +80,14 @@ const App = () => {
                 if (!isInitialized.current) {
                     // 首次检测（VM刚初始化），只标记已初始化，不记录prev值
                     isInitialized.current = true;
-                    console.log('[projectChange] Initialized: count=' + count, 'ids=', targetIds);
                     return;
                 }
-
-                console.log('[projectChange] tick: count=' + count, 'ids=', targetIds);
 
                 // 如果之前的 IDs 存在，且当前 IDs 与之前没有任何重叠，认为是新项目
                 if (prevTargetIds.current !== null) {
                     const prevIdSet = new Set(prevTargetIds.current.split(',').filter(Boolean));
                     const hasOverlap = [...idSet].some(id => prevIdSet.has(id));
                     if (!hasOverlap && idSet.size > 0) {
-                        console.log('[projectChange] New project detected! prev=', prevTargetIds.current, 'curr=', targetIds);
                         setProjectKey(k => k + 1);
                     }
                 }
@@ -131,7 +126,6 @@ const App = () => {
         return () => clearTimeout(t);
     }, [chatCollapsed]);
 
-    console.log('[App] rendering, vm=', !!vm);
     return (
         <div className="as-app">
             <div className="as-gui-wrapper">

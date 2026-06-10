@@ -30,12 +30,9 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
 
     // 项目切换时清空聊天历史
     useEffect(() => {
-        console.log('[ChatPanel] projectKey changed to', projectKey);
         if (projectKey > 0) {
-            console.log('[ChatPanel] Clearing messages, current count=', messages.length);
             setMessages([]);
             apiMessagesRef.current = [];
-            console.log('[ChatPanel] After clear, messages should be empty');
         }
     }, [projectKey]);
     const abortRef = useRef(null);
