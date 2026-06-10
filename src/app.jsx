@@ -66,22 +66,27 @@ const App = () => {
     // 检测项目切换并重置聊天历史
     // 策略：当 targets数量恢复到默认值2（stage + cat）时，认为是新建了项目
     useEffect(() => {
+        console.log('[projectChange] useEffect running, vm=', !!vm, 'vm.runtime=', !!(vm && vm.runtime));
         if (!vm || !vm.runtime) return;
 
         const checkProjectChange = () => {
             try {
                 const targets = vm.runtime.targets || [];
                 const count = targets.length;
+                const targetNames = targets.map(t => t.getName ? t.getName() : t.spriteName || 'unknown').join(', ');
 
                 if (!isInitialized.current) {
                     // 首次检测（VM刚初始化），只标记已初始化，不记录prev值
                     isInitialized.current = true;
+                    console.log('[projectChange] Initialized: count=' + count, 'names=', targetNames);
                     return;
                 }
 
                 // 如果 targets 数量恢复到默认值 2（新建项目默认状态），
                 // 且之前有记录过不同的值，则认为是新建项目
                 if (count === 2 && prevTargetCount.current !== null) {
+                    console.log('[projectChange] New project detected! count=' + count + ' prev=' + prevTargetCount.current);
+                    console.log('[projectChange] Current targets:', targetNames);
                     setProjectKey(k => k + 1);
                 }
                 // 记录 targets数量（只要不是初始的默认值2就记录）
