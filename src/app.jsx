@@ -64,7 +64,7 @@ const App = () => {
     const isInitialized = useRef(false);
 
     // 检测项目切换并重置聊天历史
-    // 策略：当 targets数量恢复到初始值0时，认为是新建了项目
+    // 策略：当 targets 从非空变为空（新建空白项目），或 targets 身份完全改变时检测
     useEffect(() => {
         console.log('[projectChange] useEffect running, vm=', !!vm, 'vm.runtime=', !!(vm && vm.runtime));
         if (!vm || !vm.runtime) return;
@@ -73,28 +73,26 @@ const App = () => {
             try {
                 const targets = vm.runtime.targets || [];
                 const count = targets.length;
-                const targetNames = targets.map(t => t.getName ? t.getName() : t.spriteName || 'unknown').join(', ');
+                // 获取所有 sprite 的 id（唯一标识）
+                const targetIds = targets.map(t => t.id).join(',');
 
                 if (!isInitialized.current) {
                     // 首次检测（VM刚初始化），只标记已初始化，不记录prev值
                     isInitialized.current = true;
-                    console.log('[projectChange] Initialized: count=' + count, 'names=', targetNames);
+                    console.log('[projectChange] Initialized: count=' + count, 'ids=', targetIds);
                     return;
                 }
 
-                console.log('[projectChange] tick: count=' + count, 'names=', targetNames, 'prev=', prevTargetCount.current);
+                console.log('[projectChange] tick: count=' + count, 'ids=', targetIds, 'prev=', prevTargetCount.current);
 
-                // 如果 targets 数量恢复到初始值 0（新建项目默认状态），
-                // 且之前有记录过不同的值，则认为是新建项目
-                if (count === 0 && prevTargetCount.current !== null) {
+                // 如果 targets 从多个角色降到很少（<=2，包括新建空项目和新建带角色项目），认为是新建项目
+                // 条件：当前 count <= 2 且之前 count > 2
+                if (count <= 2 && prevTargetCount.current !== null && prevTargetCount.current > 2) {
                     console.log('[projectChange] New project detected! count=' + count + ' prev=' + prevTargetCount.current);
-                    console.log('[projectChange] Current targets:', targetNames);
                     setProjectKey(k => k + 1);
                 }
-                // 记录 targets数量（只要不是初始的默认值0就记录）
-                if (count !== 0) {
-                    prevTargetCount.current = count;
-                }
+                // 记录 targets 数量
+                prevTargetCount.current = count;
             } catch (_) { /* ignore */ }
         };
         checkProjectChange();
