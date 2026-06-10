@@ -48,6 +48,23 @@ AI 的行为如果只依赖系统提示词的指示会留下随机性。**能强
 - **修改或添加 UI 文案时，必须同时更新日英两种语言（`STRINGS.ja` 和 `STRINGS.en`，现在还有 `STRINGS.zh`）**。只添加一种会导致英语 UI 中混入日语/出现 `undefined`。`test/i18n.test.js` 验证两种语言的键集合一致，所以不要在 JSX 中硬编码日语，而是一定要通过 `STRINGS[lang]` 获取。工具进度标签（`tools.js` 的 `draftingLabel`/`summarizeToolCall`）、系统提示词（`system-prompt.js` 的 `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`/`SYSTEM_PROMPT_ZH`）、错误消息（`agent-loop.js`）同样要准备多种语言版本。
 - **AI 响应语言不靠提示词请求，而是通过 `lang` 替换系统提示词本身来保证**（"用逻辑确保可靠"）。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)`。
 
+### scratch-gui 菜单栏翻译
+
+`scratch-gui` 使用 `react-intl` 进行 GUI 菜单本地化，**不通过 `vm.setLocale`**。`scratch-l10n` 中部分中文翻译缺失（如 Settings、Debug 等菜单项），通过 `app.jsx` 的 DOM 操作注入补充翻译：
+
+```javascript
+useEffect(() => {
+    if (lang !== 'zh') return;
+    const translations = { 'Settings': '设置', 'Debug': '调试', ... };
+    const applyTranslations = () => { /* DOM 查询替换 */ };
+    const observer = new MutationObserver(applyTranslations);
+    observer.observe(document.body, {childList: true, subtree: true});
+    return () => observer.disconnect();
+}, [lang]);
+```
+
+如需添加新的菜单翻译，在 `translations` 对象中添加 key-value 即可。
+
 ### 代理循环 (`src/agent/agent-loop.js`)
 
 - Anthropic 循环和 OpenAI 兼容循环（`runOpenAICompatAgent`）两种实现。DeepSeek 和 OpenAI (GPT) 共用兼容循环
@@ -70,6 +87,15 @@ AI 的行为如果只依赖系统提示词的指示会留下随机性。**能强
 - 日语标签通过 `src/agent/block-labels.js` 的 `JA` 对象管理
 - AI 不用 opcode 而是用日语名称（「ずっと」等）编写时，也将通过引号内的字符串通过 `findOpcodeByJaName`（从 JA 标签自动生成的逆向查找 + 别名）解析为 opcode 并转换为积木图像。常见的换说法添加到 `JA_NAME_ALIASES`
 - **重要**：日语标签必须与 scratchblocks 区域设置文件（`locales/ja.json`）中的字符串精确一致。包括 `@greenFlag`、`@turnRight` 等图标引用
+
+### 项目切换检测
+
+点击"新作品"时自动清空聊天历史。通过监控 `vm.runtime.targets` 的 ID 集合变化来检测项目切换：
+
+- 轮询 `vm.runtime.targets` 获取当前所有 sprite 的 ID
+- 比较当前 ID 集合与之前的是否有重叠
+- 如果没有任何重叠（即所有 ID 都变了），则判定为新项目
+- 通过 `projectKey` 状态递增触发 `ChatPanel` 重新渲染并清空消息
 
 ### 系统提示词 (`src/agent/system-prompt.js`)
 
