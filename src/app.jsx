@@ -107,19 +107,33 @@ const App = () => {
     //（scratch-l10n 暂无这些 key 的中文翻译，react-intl 无法通过 setLocale 覆盖）
     useEffect(() => {
         if (lang !== 'zh') return;
+        const translations = {
+            'Settings': '设置',
+            'Debug': '调试',
+            'Language': '语言',
+            'Theme': '主题',
+            'Color Mode': '颜色模式',
+            'Light': '浅色',
+            'Dark': '深色',
+            'High Contrast': '高对比度',
+            'Blue': '蓝色',
+            'Dinosaur': '恐龙',
+            'Orange': '橙色',
+            'Pink': '粉色',
+            'Purple': '紫色'
+        };
         const applyTranslations = () => {
-            // 查找设置菜单（file 菜单下或设置按钮）
+            // 查找菜单项
             const menuItems = document.querySelectorAll('[role="menuitem"]');
             menuItems.forEach(item => {
                 const text = item.textContent.trim();
-                if (text === 'Settings') item.textContent = '设置';
-                if (text === 'Debug') item.textContent = '调试';
+                if (translations[text]) item.textContent = translations[text];
             });
             // 备用：直接搜索包含特定文本的 DOM 节点
             const allSpans = document.querySelectorAll('span');
             allSpans.forEach(span => {
-                if (span.textContent === 'Settings') span.textContent = '设置';
-                if (span.textContent === 'Debug') span.textContent = '调试';
+                const text = span.textContent.trim();
+                if (translations[text]) span.textContent = translations[text];
             });
         };
         // 延迟执行，等待菜单渲染
