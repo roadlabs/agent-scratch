@@ -1,8 +1,8 @@
 import React from 'react';
 import '../api-key-modal/api-key-modal.css';
 
-// 初回起動時に表示する説明ダイアログ(AI利用の開示)。
-// 太字の強調を保つため、言語ごとに本文 JSX を用意する。
+// 首次启动时显示的说明弹窗（AI 使用披露）。
+// 为了保持粗体强调，按语言准备正文 JSX。
 const BODY = {
     ja: {
         title: 'はじめにお読みください',
@@ -34,6 +34,22 @@ const BODY = {
                     <li>If you are under 18, please use it <strong>together with an adult such as a parent or teacher</strong></li>
                     <li>What you type is sent to the AI's server. <strong>Do not enter personal information such as your name or address</strong></li>
                     <li>The AI's answers can sometimes be wrong</li>
+                </ul>
+            </>
+        )
+    },
+    zh: {
+        title: '请先阅读此处',
+        accept: '我知道了',
+        content: (
+            <>
+                <p>
+                    右侧的"AI 助手"聊天对象不是人类，而是 <strong>AI</strong>。
+                </p>
+                <ul className="as-modal-list">
+                    <li>未满18岁者请<strong>与家长或老师等大人一起</strong>使用</li>
+                    <li>输入的内容会被发送到 AI 服务器。<strong>请勿输入姓名、地址等个人信息</strong></li>
+                    <li>AI 的回答有时也可能出错</li>
                 </ul>
             </>
         )

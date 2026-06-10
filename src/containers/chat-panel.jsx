@@ -21,11 +21,11 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse}) => {
     const [showDisclosure, setShowDisclosure] = useState(
         () => !localStorage.getItem(DISCLOSURE_STORAGE_KEY)
     );
-    // ツール入力生成中の進捗表示("ブロックを書いています (1200文字)" など)
+    // 工具输入生成中的进度显示("正在编写区块 (1200字符)" 等)
     const [drafting, setDrafting] = useState(null);
     const [currentModel, setCurrentModel] = useState(() => getModel());
 
-    // Anthropic API 形式の会話履歴(マルチターン対応)
+    // Anthropic API 格式的对话历史（支持多轮）
     const apiMessagesRef = useRef([]);
     const abortRef = useRef(null);
 
@@ -33,13 +33,13 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse}) => {
         setMessages(prev => [...prev, m]);
     }, []);
 
-    // ストリーミング: 次のdeltaで新しいassistant行を開始する合図
+    // 流式传输：下一个 delta 开始新 assistant 行的信号
     const pendingNewAssistant = useRef(false);
     const startAssistant = useCallback(() => {
         pendingNewAssistant.current = true;
     }, []);
 
-    // textの増分を末尾のstreaming行に追記(なければ新規作成)
+    // 将 text 的增量追加到末尾的 streaming 行（没有则新建）
     const appendAssistantDelta = useCallback(delta => {
         setMessages(prev => {
             const next = [...prev];
@@ -54,12 +54,12 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse}) => {
         });
     }, []);
 
-    // 実行終了時にstreamingフラグを落とす(「考え中...」表示判定用)
+    // 执行结束时关闭 streaming 标志（用于判断"思考中..."显示）
     const finishStreaming = useCallback(() => {
         setMessages(prev => prev.map(m => (m.streaming ? {...m, streaming: false} : m)));
     }, []);
 
-    // 直近の実行中ツール表示を done/error に更新する(エラー時は詳細も保持)
+    // 将最近执行中的工具显示更新为 done/error（错误时保留详情）
     const finishLastTool = useCallback((ok, detail) => {
         setMessages(prev => {
             const next = [...prev];
@@ -82,8 +82,8 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse}) => {
             appendMessage({role: 'error', text: t.vmNotReady});
             return;
         }
-        // 通常送信では子が表示中の値を明示する。サジェスト等で一時的に
-        // 無効化する場合は forceBlocksDisabled を優先する。
+        //正常发送时显式传递子组件显示的值。如需通过建议等临时
+        // 禁用的场合，优先使用 forceBlocksDisabled。
         const effectiveBlocksEnabled = opts.forceBlocksDisabled ?
             false :
             (typeof opts.blocksEnabled === 'boolean' ? opts.blocksEnabled : blocksEnabled);

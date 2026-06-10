@@ -1,5 +1,5 @@
-// ?selftest=1 でVMツールハンドラをClaudeなしで通しで検証する開発用スクリプト
-// ?agenttest=1 でお試しモード(プロキシ)経由のエージェントループをE2E検証する
+// ?selftest=1 用于开发时验证 VM 工具处理器（不依赖 Claude）的脚本
+// ?agenttest=1 用于 E2E 验证经过试用模式（代理）的代理循环
 /* eslint-disable no-console */
 import {createToolHandlers} from '../agent/tool-handlers';
 import {runAgent, isTrialAvailable} from '../agent/agent-loop';
@@ -31,7 +31,7 @@ export const maybeRunAgentTest = vm => {
                 onToolStart: s => console.log('[agenttest] tool start:', s),
                 onToolEnd: ok => console.log('[agenttest] tool end:', ok),
                 onToolDrafting: (label, chars) => {
-                    // 1000文字ごとに進捗を出す(ログ洪水防止)
+                    // 每1000字符输出一次进度（防止日志洪水）
                     if (label && (chars === 0 || chars % 1000 < 30)) {
                         console.log('[agenttest] drafting:', label, chars);
                     }
@@ -54,15 +54,15 @@ export const maybeRunSelfTest = vm => {
     const run = async () => {
         console.log('[selftest] start');
         try {
-            // ライブラリ検索
+            // 库搜索
             const found = handlers.search_library({kind: 'sprite', query: 'ball'});
             console.log('[selftest] search:', found.results.map(r => r.name).join(', '));
 
-            // スプライト追加
+            // 添加角色
             const added = await handlers.add_sprite({name: 'Ball'});
             console.log('[selftest] add_sprite:', JSON.stringify(added));
 
-            // Ballにスクリプト
+            // 给 Ball 添加脚本
             handlers.set_scripts({
                 target: 'Ball',
                 scripts: [
@@ -76,7 +76,7 @@ export const maybeRunSelfTest = vm => {
             });
             await delay(500);
 
-            // ネコ(Sprite1)に変数つきスクリプト
+            // 给猫(Sprite1)添加带变量的脚本
             handlers.set_scripts({
                 target: 'Sprite1',
                 scripts: [
@@ -98,7 +98,7 @@ export const maybeRunSelfTest = vm => {
                 ]
             });
 
-            // ペンブロック(拡張の自動ロード確認)
+            // 画笔区块（扩展自动加载确认）
             await handlers.set_scripts({
                 target: 'Ball',
                 scripts: [
@@ -113,10 +113,10 @@ export const maybeRunSelfTest = vm => {
             console.log('[selftest] pen extension loaded:',
                 vm.extensionManager.isExtensionLoaded('pen'));
 
-            // プロパティ設定
+            // 属性设置
             handlers.set_sprite_properties({target: 'Ball', x: 150, y: 100, size: 80});
 
-            // 状態取得(逆変換の確認)
+            //状态获取（确认逆转换）
             const state = handlers.get_project_state();
             console.log('[selftest] project state:', JSON.stringify(state, null, 1));
             console.log('[selftest] PASSED');
@@ -125,6 +125,6 @@ export const maybeRunSelfTest = vm => {
         }
     };
 
-    // プロジェクト読み込み完了を待ってから実行
+    // 等待项目加载完成后再执行
     setTimeout(run, 4000);
 };

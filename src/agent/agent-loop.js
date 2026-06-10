@@ -1,4 +1,4 @@
-// Anthropic Messages API の手動 tool use ループ
+// Anthropic Messages API 的手动 tool use 循环
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import {TOOLS, BLOCK_TOOL_NAMES, summarizeToolCall, draftingLabel} from './tools';
@@ -7,18 +7,18 @@ import {createToolHandlers, ToolError} from './tool-handlers';
 
 export class AuthError extends Error {}
 
-// 試用モード: キー未入力時に使うプロキシURL(ビルド時に注入。空なら無効)
+// 试用模式：未输入密钥时使用的代理 URL（构建时注入。空则无效）
 const TRIAL_PROXY_URL = process.env.TRIAL_PROXY_URL;
 
 const TRIAL_TOKEN_KEY = 'agent-scratch-trial-token';
 
-// URLパラメータ ?p=xxx からトークンを読み取り localStorage に保存する(起動時に呼ぶ)
+// 从 URL 参数 ?p=xxx 读取令牌并保存到 localStorage（启动时调用）
 export const initTrialToken = () => {
     const params = new URLSearchParams(window.location.search);
     const p = params.get('p');
     if (p) {
         localStorage.setItem(TRIAL_TOKEN_KEY, p);
-        // URL からパラメータを除去(リロード後も残らないよう)
+        // 从 URL 中移除参数（以便刷新后不再残留）
         params.delete('p');
         const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
         window.history.replaceState({}, '', newUrl);
@@ -27,7 +27,7 @@ export const initTrialToken = () => {
 
 export const getTrialToken = () => localStorage.getItem(TRIAL_TOKEN_KEY) || '';
 
-// TRIAL_PROXY_URL が設定されており、かつトークンが保存済みの場合のみ試用モード有効
+// 仅在 TRIAL_PROXY_URL 已设置且令牌已保存时启用试用模式
 export const isTrialAvailable = () => Boolean(TRIAL_PROXY_URL && getTrialToken());
 
 const MODEL_STORAGE_KEY = 'agent-scratch-model';
@@ -35,14 +35,14 @@ const DEEPSEEK_API_KEY_STORAGE_KEY = 'agent-scratch-deepseek-api-key';
 const OPENAI_API_KEY_STORAGE_KEY = 'agent-scratch-openai-api-key';
 const GEMINI_API_KEY_STORAGE_KEY = 'agent-scratch-gemini-api-key';
 
-// ローカル開発用キー(.env から webpack DefinePlugin で注入。未設定なら空文字)
+// 本地开发用密钥（从 .env 经 webpack DefinePlugin 注入。未设置则为空字符串）
 export const DEV_ANTHROPIC_KEY = process.env.DEV_ANTHROPIC_API_KEY || '';
 const DEV_DEEPSEEK_KEY = process.env.DEV_DEEPSEEK_API_KEY || '';
 const DEV_OPENAI_KEY = process.env.DEV_OPENAI_API_KEY || '';
 const DEV_GEMINI_KEY = process.env.DEV_GEMINI_API_KEY || '';
 
-export const DEFAULT_MODEL = 'deepseek-chat'; // デフォルトモデル
-export const TRIAL_MODEL = 'deepseek-chat';   // お試しモードで使うモデル
+export const DEFAULT_MODEL = 'deepseek-chat'; // 默认模型
+export const TRIAL_MODEL = 'deepseek-chat';   // 试用模式使用的模型
 export const getModel = () => localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
 export const setModel = model => localStorage.setItem(MODEL_STORAGE_KEY, model);
 export const getDeepSeekApiKey = () => localStorage.getItem(DEEPSEEK_API_KEY_STORAGE_KEY) || DEV_DEEPSEEK_KEY;
@@ -57,9 +57,9 @@ export const isGeminiModel = model => model && model.startsWith('gemini-');
 
 const MAX_ITERATIONS = 30;
 const MAX_TOKENS = 16000;
-const REQUEST_TIMEOUT_MS = 180000; // 1回のAPI呼び出しの上限(ストリーミングなので通常は当たらない保険)
+const REQUEST_TIMEOUT_MS = 180000; // 单次 API 调用的上限（因为是流式传输，通常不会触发的保险）
 
-// 会話の末尾に cache_control を付け直す(移動式ブレークポイント)
+// 在对话末尾重新附加 cache_control（移动式断点）
 const moveCacheMarker = messages => {
     for (const message of messages) {
         if (!Array.isArray(message.content)) continue;
@@ -76,19 +76,19 @@ const moveCacheMarker = messages => {
     }
 };
 
-// Anthropic形式のツール定義 → OpenAI形式に変換
+// Anthropic 格式的工具定义 → 转换为 OpenAI 格式
 const toOpenAITools = tools => tools.map(({name, description, input_schema}) => ({
     type: 'function',
     function: {name, description, parameters: input_schema}
 }));
 
-// OpenAI形式の会話履歴をAnthropicのapiMessagesに追加するためのアダプタ
-// ここではOpenAI形式のメッセージ配列を別途管理する
+// 将 OpenAI 格式的对话历史添加到 Anthropic 的 apiMessages 的适配器
+// 此处另行管理 OpenAI 格式的消息数组
 const anthropicToOpenAIMessages = messages => {
     const result = [];
     for (const msg of messages) {
         if (msg.role === 'user') {
-            // tool_result を含む場合 → tool メッセージ群に変換
+            // 包含 tool_result 时 → 转换为 tool 消息群
             const toolResults = Array.isArray(msg.content)
                 ? msg.content.filter(b => b.type === 'tool_result')
                 : [];
@@ -122,9 +122,9 @@ const anthropicToOpenAIMessages = messages => {
     return result;
 };
 
-// OpenAI SDK が自動付与する x-stainless-* ヘッダの除去指定。
-// Google の OpenAI 互換エンドポイントはこれらを CORS で許可しておらず、
-// 付いているとプリフライトが 403 になり "Connection error." で失敗する
+// 指定去除 OpenAI SDK 自动附加的 x-stainless-* 头。
+// Google 的 OpenAI 兼容端点不允许这些头 CORS 跨域，
+// 如果有这些头，预检请求会返回 403 并导致"Connection error."失败
 const STRIP_STAINLESS_HEADERS = {
     'x-stainless-arch': null,
     'x-stainless-lang': null,
@@ -165,7 +165,7 @@ const runOpenAICompatAgent = async ({
         baseURL: baseURL || 'https://api.deepseek.com',
         dangerouslyAllowBrowser: true,
         timeout: REQUEST_TIMEOUT_MS,
-        maxRetries: 2, // 503等の一時エラーに耐えるため(指数バックオフで自動再試行)
+        maxRetries: 2, // 为了承受 503 等临时错误（指数退避自动重试）
         ...(stripSdkHeaders ? {defaultHeaders: STRIP_STAINLESS_HEADERS} : {})
     });
     const handlers = createToolHandlers(vm, {blocksEnabled});
@@ -190,8 +190,8 @@ const runOpenAICompatAgent = async ({
             if (onAssistantStart) onAssistantStart();
             const stream = await client.chat.completions.create({
                 model,
-                // GPT-5系は max_tokens 非対応(max_completion_tokens を使う)。
-                // ストリーミング時の usage 取得も OpenAI は明示オプトインが必要
+                // GPT-5 系列不支持 max_tokens（需使用 max_completion_tokens）。
+                // 流式传输时的 usage 获取也需要 OpenAI 明确 opt-in
                 ...(isOpenAI
                     ? {max_completion_tokens: MAX_TOKENS}
                     : {max_tokens: MAX_TOKENS}),
@@ -201,7 +201,7 @@ const runOpenAICompatAgent = async ({
                 stream: true
             }, {signal});
 
-            // ストリーミングでテキストとtool_callsを収集
+            // 通过流式传输收集文本和 tool_calls
             const partialToolCalls = {};
             for await (const chunk of stream) {
                 if (signal && signal.aborted) return;
@@ -240,13 +240,17 @@ const runOpenAICompatAgent = async ({
         } catch (e) {
             if (e?.status === 401 || e?.code === 'invalid_api_key') throw new AuthError(e.message);
             if (e?.status === 429) {
-                throw new Error(lang === 'en' ?
+                throw new Error(lang === 'zh' ?
+                    '服务繁忙，请稍后再试。' :
+                    lang === 'en' ?
                     'The service is busy. Please wait a moment and try again.' :
                     '混み合っています。少し待ってからもう一度試してください。');
             }
             if (e?.status >= 500) {
-                // Gemini等で頻発する一時的なサーバ過負荷(503など)
-                throw new Error(lang === 'en' ?
+                // Gemini 等频繁发生的一时性服务器过载（503 等）
+                throw new Error(lang === 'zh' ?
+                    `AI 服务器繁忙或暂时不可用 (${e.status})。请稍后再发送相同内容。` :
+                    lang === 'en' ?
                     `The AI server is busy or temporarily unavailable (${e.status}). ` +
                     'Please wait a moment and send the same message again.' :
                     `AIサーバが混み合っているか一時的に不調です(${e.status})。` +
@@ -256,7 +260,7 @@ const runOpenAICompatAgent = async ({
             throw e;
         }
 
-        // apiMessages に assistant の応答を追記 (Anthropic形式で統一管理)
+        // 将 assistant 的响应追加到 apiMessages（以 Anthropic 格式统一管理）
         const assistantContent = [];
         if (assistantText) assistantContent.push({type: 'text', text: assistantText});
         for (const tc of toolCalls) {
@@ -300,7 +304,11 @@ const runOpenAICompatAgent = async ({
         apiMessages.push({role: 'user', content: toolResults});
     }
 
-    onAssistantText('(ツール実行回数の上限に達したため停止しました。続きが必要なら指示してください)');
+    onAssistantText(lang === 'zh' ?
+        '(已到达工具执行次数上限而停止。如果需要继续，请指示。)' :
+        lang === 'en' ?
+        '(Stopped because the tool execution limit was reached. Please instruct me to continue if needed.)' :
+        '(ツール実行回数の上限に達したため停止しました。続きが必要なら指示してください)');
 };
 
 /**
@@ -324,24 +332,24 @@ export const runAgent = async ({
 }) => {
     const model = getModel();
 
-    // お試しモード: キー未入力 + プロキシURL設定済み + トークン保存済み → DeepSeek プロキシ経由
+    // 试用模式：未输入密钥 + 代理 URL 已设置 + 令牌已保存 → 经由 DeepSeek 代理
     const useTrial = !apiKey && !getDeepSeekApiKey() && !getOpenAIApiKey() && !getGeminiApiKey() && isTrialAvailable();
     if (useTrial) {
         return runOpenAICompatAgent({
             apiKey: getTrialToken(),
             baseURL: TRIAL_PROXY_URL,
             model: TRIAL_MODEL,
-            // お試しモードはブロック操作不可(説明・解説モード固定)
+            // 试用模式不允许区块操作（固定为说明・讲解模式）
             vm, userText, apiMessages, signal, blocksEnabled: false, lang,
             onAssistantStart, onAssistantDelta, onAssistantText,
             onToolStart, onToolEnd, onToolDrafting
         });
     }
 
-    // DeepSeekモデルが選択されている場合はOpenAI互換ループへ
+    // 选择了 DeepSeek 模型时，使用 OpenAI 兼容循环
     if (isDeepSeekModel(model)) {
         const deepseekApiKey = getDeepSeekApiKey();
-        if (!deepseekApiKey) throw new AuthError(lang === 'en' ? 'No DeepSeek API key is set. Please set it from ⚙️.' : 'DeepSeek APIキーが設定されていません。⚙️ から設定してください。');
+        if (!deepseekApiKey) throw new AuthError(lang === 'zh' ? '未设置 DeepSeek API 密钥。请从 ⚙️ 进行设置。' : lang === 'en' ? 'No DeepSeek API key is set. Please set it from ⚙️.' : 'DeepSeek APIキーが設定されていません。⚙️ から設定してください。');
         return runOpenAICompatAgent({
             apiKey: deepseekApiKey, vm, userText, apiMessages, signal, blocksEnabled, lang,
             onAssistantStart, onAssistantDelta, onAssistantText,
@@ -349,10 +357,10 @@ export const runAgent = async ({
         });
     }
 
-    // OpenAI (GPT) モデルが選択されている場合もOpenAI互換ループへ
+    // 选择了 OpenAI (GPT) 模型时，也使用 OpenAI 兼容循环
     if (isOpenAIModel(model)) {
         const openaiApiKey = getOpenAIApiKey();
-        if (!openaiApiKey) throw new AuthError(lang === 'en' ? 'No OpenAI API key is set. Please set it from ⚙️.' : 'OpenAI APIキーが設定されていません。⚙️ から設定してください。');
+        if (!openaiApiKey) throw new AuthError(lang === 'zh' ? '未设置 OpenAI API 密钥。请从 ⚙️ 进行设置。' : lang === 'en' ? 'No OpenAI API key is set. Please set it from ⚙️.' : 'OpenAI APIキーが設定されていません。⚙️ から設定してください。');
         return runOpenAICompatAgent({
             apiKey: openaiApiKey,
             baseURL: 'https://api.openai.com/v1',
@@ -362,10 +370,10 @@ export const runAgent = async ({
         });
     }
 
-    // Google Gemini モデルもOpenAI互換エンドポイント経由で同じループへ
+    // Google Gemini 模型也通过 OpenAI 兼容端点使用同一循环
     if (isGeminiModel(model)) {
         const geminiApiKey = getGeminiApiKey();
-        if (!geminiApiKey) throw new AuthError(lang === 'en' ? 'No Gemini API key is set. Please set it from ⚙️.' : 'Gemini APIキーが設定されていません。⚙️ から設定してください。');
+        if (!geminiApiKey) throw new AuthError(lang === 'zh' ? '未设置 Gemini API 密钥。请从 ⚙️ 进行设置。' : lang === 'en' ? 'No Gemini API key is set. Please set it from ⚙️.' : 'Gemini APIキーが設定されていません。⚙️ から設定してください。');
         return runOpenAICompatAgent({
             apiKey: geminiApiKey,
             baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -376,7 +384,7 @@ export const runAgent = async ({
         });
     }
 
-    // Anthropic モデル
+    // Anthropic 模型
     const effectiveModel = model;
     const client = new Anthropic({
         apiKey,
@@ -387,7 +395,7 @@ export const runAgent = async ({
     });
     const handlers = createToolHandlers(vm, {blocksEnabled});
 
-    // システムプロンプトとツール定義は固定 → prompt caching
+    // 系统提示词和工具定义是固定的 → prompt caching
     const system = [
         {type: 'text', text: getSystemPrompt(lang), cache_control: {type: 'ephemeral'}},
         {type: 'text', text: getBlockOperationPrompt(blocksEnabled, lang)}
@@ -406,7 +414,7 @@ export const runAgent = async ({
 
         let response;
         try {
-            // ストリーミングで呼び出し、textの増分をUIへ逐次反映する
+            // 通过流式传输调用，将 text 的增量实时反映到 UI
             if (onAssistantStart) onAssistantStart();
             const stream = client.messages.stream({
                 model: effectiveModel,
@@ -419,8 +427,8 @@ export const runAgent = async ({
             if (onAssistantDelta) {
                 stream.on('text', delta => onAssistantDelta(delta));
             }
-            // ツール入力(JSON)の生成中は本文テキストが流れないため、
-            // 「○○を書いています...(n文字)」の進捗をUIへ送る
+            // 因为工具输入(JSON)生成期间正文文本不会流动，
+            // 将「正在编写○○...(n字符)」的进度发送给 UI
             if (onToolDrafting) {
                 let draftLabel = null;
                 let draftChars = 0;
@@ -440,25 +448,29 @@ export const runAgent = async ({
                     }
                 });
             }
-            // 完全なMessage(thinking/tool_useブロック込み)を取得
+            // 获取完整的 Message（含 thinking/tool_use 区块）
             response = await stream.finalMessage();
         } catch (e) {
             if (e instanceof Anthropic.AuthenticationError) {
                 throw new AuthError(e.message);
             }
             if (e instanceof Anthropic.RateLimitError) {
-                throw new Error(lang === 'en' ?
+                throw new Error(lang === 'zh' ?
+                    '服务繁忙，请稍后再试。' :
+                    lang === 'en' ?
                     'The service is busy. Please wait a moment and try again.' :
                     '混み合っています。少し待ってからもう一度試してください。');
             }
             if (e instanceof Anthropic.InternalServerError) {
-                throw new Error(lang === 'en' ?
+                throw new Error(lang === 'zh' ?
+                    `AI 服务器繁忙或暂时不可用 (${e.status})。请稍后再发送相同内容。` :
+                    lang === 'en' ?
                     `The AI server is busy or temporarily unavailable (${e.status}). ` +
                     'Please wait a moment and send the same message again.' :
-                    `AIサーバが混み合っているか一時的に不調です(${e.status})。` +
+                    `AIサーバーが混み合っているか一瞬的に不通です(${e.status})。` +
                     '少し待ってから、同じ内容をもう一度送ってください。');
             }
-            // adaptive thinking 未対応モデルへのフォールバック
+            // adaptive thinking 未支持模型的降级处理
             if (useThinking && e instanceof Anthropic.BadRequestError &&
                 String(e.message).includes('thinking')) {
                 useThinking = false;
@@ -467,20 +479,26 @@ export const runAgent = async ({
             }
             if (e instanceof Anthropic.BadRequestError &&
                 String(e.message).includes('model not allowed')) {
-                throw new Error(lang === 'en' ?
+                throw new Error(lang === 'zh' ?
+                    '此模型在试用模式下不可用。请从 ⚙️ 设置自己的 API 密钥。' :
+                    lang === 'en' ?
                     'This model is not available in trial mode. Please set your own API key from ⚙️.' :
                     'お試しモードでは使えないモデルです。⚙️ から自分のAPIキーを設定してください。');
             }
             if (e instanceof Anthropic.APIConnectionTimeoutError) {
-                throw new Error(lang === 'en' ?
+                throw new Error(lang === 'zh' ?
+                    '耗时过长已取消。请将任务分解成更小的步骤（例如："先只创建球和球拍"）。' :
+                    lang === 'en' ?
                     'It took too long, so it was canceled. Try breaking the task into smaller steps (e.g. "First make just the ball and paddle").' :
                     '時間がかかりすぎたため中断しました。タスクを小さく分けて指示してみてください(例:「まずボールとパドルだけ作って」)。');
             }
             if (e instanceof Anthropic.APIUserAbortError) {
-                return; // ユーザーによる停止
+                return; // 用户主动停止
             }
             if (e instanceof Anthropic.APIConnectionError) {
-                throw new Error(lang === 'en' ?
+                throw new Error(lang === 'zh' ?
+                    '无法连接到 Anthropic API。请检查网络。' :
+                    lang === 'en' ?
                     'Could not connect to the Anthropic API. Please check your network.' :
                     'Anthropic API に接続できませんでした。ネットワークを確認してください。');
             }
@@ -492,14 +510,16 @@ export const runAgent = async ({
 
         if (response.stop_reason !== 'tool_use') {
             if (response.stop_reason === 'max_tokens') {
-                onAssistantText(lang === 'en' ?
+                onAssistantText(lang === 'zh' ?
+                    '(输出过长被截断。如果需要继续，请指示。)' :
+                    lang === 'en' ?
                     '(The output was too long and got cut off. Please ask me to continue.)' :
                     '(出力が長すぎて途中で切れました。続きを指示してください)');
             }
             return;
         }
 
-        // ツール実行
+        // 工具执行
         const toolResults = [];
         for (const block of response.content) {
             if (block.type !== 'tool_use') continue;
@@ -515,7 +535,7 @@ export const runAgent = async ({
                 isError = true;
                 result = {error: e.message};
                 if (!(e instanceof ToolError)) {
-                    // 想定外の例外はコンソールにも出す
+                    // 预期外的异常也输出到控制台
                     console.error(`tool ${block.name} failed:`, e); // eslint-disable-line no-console
                 }
             }
@@ -526,11 +546,15 @@ export const runAgent = async ({
                 content: JSON.stringify(result),
                 ...(isError ? {is_error: true} : {})
             });
-            // ブロックが組まれていく様子を見せるための小休止
+            // 为了展示区块逐渐组装的样子而稍作停顿
             await new Promise(resolve => setTimeout(resolve, 300));
         }
         apiMessages.push({role: 'user', content: toolResults});
     }
 
-    onAssistantText('(ツール実行回数の上限に達したため停止しました。続きが必要なら指示してください)');
+    onAssistantText(lang === 'zh' ?
+        '(已到达工具执行次数上限而停止。如果需要继续，请指示。)' :
+        lang === 'en' ?
+        '(Stopped because the tool execution limit was reached. Please instruct me to continue if needed.)' :
+        '(ツール実行回数の上限に達したため停止しました。続きが必要なら指示してください)');
 };

@@ -3,7 +3,7 @@ import {isDeepSeekModel, isOpenAIModel, isGeminiModel} from '../../agent/agent-l
 import {STRINGS} from '../../i18n';
 import './api-key-modal.css';
 
-// label はモデル名 + 言語別の補足注記({ja, en})
+// label 是模型名 + 语言别的补充注释({ja, en})
 const MODELS = [
     {id: 'deepseek-chat', name: 'DeepSeek V3', note: {ja: '(低コスト・高性能) ★推奨', en: '(low cost, high performance) ★recommended'}, provider: 'deepseek'},
     {id: 'deepseek-reasoner', name: 'DeepSeek R1', note: {ja: '(推論特化)', en: '(reasoning-focused)'}, provider: 'deepseek'},

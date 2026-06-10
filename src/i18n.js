@@ -1,15 +1,20 @@
-// UI 文言の集約と言語判定ヘルパー。
+// UI 文案的统一管理和语言判定辅助函数。
 //
-// 単一の真実は Scratch の言語(vm.getLocale())。日本語系(ja / ja-Hira)は
-// 'ja'、それ以外はすべて 'en' に畳む。state/ref に二重管理せず、表示・送信時に
-// この lang を引数で明示的に渡す(CLAUDE.md の設計方針)。
+// 单一真实来源是 Scratch 的语言(vm.getLocale())。日语系(ja / ja-Hira)映射为
+// 'ja'，其他全部映射为 'en'。不在 state/ref 中双重管理，显示和发送时
+// 通过参数显式传递此 lang（遵循 CLAUDE.md 的设计方针）。
 
-// Scratch の locale コード('ja' / 'ja-Hira' / 'en' / 'fr' …) → 'ja' | 'en'
-export const localeToLang = locale => (String(locale || '').startsWith('ja') ? 'ja' : 'en');
+// Scratch 的 locale 代码('ja' / 'ja-Hira' / 'en' / 'fr' / 'zh' …) → 'ja' | 'en' | 'zh'
+export const localeToLang = locale => {
+    const l = String(locale || '');
+    if (l.startsWith('ja')) return 'ja';
+    if (l.startsWith('zh')) return 'zh';
+    return 'en';
+};
 
 export const STRINGS = {
     ja: {
-        // チャットパネル
+        // 聊天面板
         headerTitle: 'AI アシスタント',
         openAssistant: 'AI アシスタントを開く',
         closeAssistant: 'AI アシスタントを閉じる',
@@ -27,11 +32,11 @@ export const STRINGS = {
         toolErrorTitle: 'クリックでエラー内容を表示',
         trialBanner: '🎁 お試しモードで利用中(DeepSeek V3・制限あり)。⚙️ から自分の API キーを設定できます',
         noKey: '⚙️ をクリックして API キーを設定してください',
-        // コンテナのエラー文言
+        // 容器的错误提示
         vmNotReady: 'Scratch エディタの読み込みが完了していません。',
         authInvalid: 'APIキーが無効です。設定し直してください。',
         stopped: '(停止しました)',
-        // API キー / モデル設定モーダル
+        // API 密钥 / 模型设置弹窗
         modalTitle: 'API キー / モデル設定',
         modalModelLabel: '使用モデル',
         modalCancel: 'キャンセル',
@@ -79,21 +84,68 @@ export const STRINGS = {
         geminiDesc: 'Enter your Google Gemini API key.',
         hintPrefix: 'You can get an API key at ',
         hintSuffix: '.'
+    },
+    zh: {
+        // 聊天面板
+        headerTitle: 'AI 助手',
+        openAssistant: '打开 AI 助手',
+        closeAssistant: '关闭 AI 助手',
+        settings: 'API密钥设置',
+        placeholderLine1: '用中文告诉我你想做什么。',
+        placeholderExample: '例如："让小猫在点击绿旗后一直向右移动"',
+        inputPlaceholder: '输入指令...',
+        send: '发送',
+        stop: '■ 停止',
+        thinking: '思考中...',
+        toggleBlocks: '区块操作',
+        toggleDisabledTitle: '试用模式下无法使用区块操作。从 ⚙️ 设置自己的 API 密钥即可使用',
+        toolCopy: '复制',
+        toolCopied: '已复制 ✓',
+        toolErrorTitle: '点击显示错误详情',
+        trialBanner: '🎁 正在使用试用模式（DeepSeek V3・有限制）。可从 ⚙️ 设置自己的 API 密钥',
+        noKey: '请点击 ⚙️ 设置 API 密钥',
+        // 容器的错误提示
+        vmNotReady: 'Scratch 编辑器尚未加载完成。',
+        authInvalid: 'API 密钥无效。请重新设置。',
+        stopped: '（已停止）',
+        // API 密钥 / 模型设置弹窗
+        modalTitle: 'API 密钥 / 模型设置',
+        modalModelLabel: '使用模型',
+        modalCancel: '取消',
+        modalSave: '保存',
+        keyStoredNote: '密钥仅保存在此浏览器的 localStorage 中。',
+        anthropicDesc: '请输入 Anthropic API 密钥以使用 Claude。',
+        deepseekDesc: '请输入 DeepSeek API 密钥。',
+        openaiDesc: '请输入 OpenAI API 密钥。',
+        geminiDesc: '请输入 Google Gemini API 密钥。',
+        hintPrefix: 'API 密钥可在 ',
+        hintSuffix: ' 获取。'
     }
 };
 
-// ツール入力生成中の進捗末尾(「(120文字)」/「(120 chars)」)
-export const draftingChars = (lang, chars) =>
-    (chars > 0 ? (lang === 'ja' ? ` (${chars}文字)` : ` (${chars} chars)`) : '');
+// 工具输入生成中的进度后缀(「(120字符)」/「(120 chars)」/「(120个字符)」)
+export const draftingChars = (lang, chars) => {
+    if (chars <= 0) return '';
+    if (lang === 'ja') return ` (${chars}文字)`;
+    if (lang === 'zh') return ` (${chars}个字符)`;
+    return ` (${chars} chars)`;
+};
 
-// 実行時エラーの接頭辞
-export const errorPrefix = (lang, msg) => (lang === 'ja' ? `エラー: ${msg}` : `Error: ${msg}`);
+// 运行时错误的前缀
+export const errorPrefix = (lang, msg) => {
+    if (lang === 'ja') return `エラー: ${msg}`;
+    if (lang === 'zh') return `错误: ${msg}`;
+    return `Error: ${msg}`;
+};
 
-// 料金表リンクのラベル
-export const pricingLabel = (lang, providerLabel) =>
-    (lang === 'ja' ? `${providerLabel} の料金表(API利用料)` : `${providerLabel} pricing (API usage)`);
+// 价格表链接的标签
+export const pricingLabel = (lang, providerLabel) => {
+    if (lang === 'ja') return `${providerLabel} の料金表(API利用料)`;
+    if (lang === 'zh') return `${providerLabel} 价格表（API 使用费）`;
+    return `${providerLabel} pricing (API usage)`;
+};
 
-// サジェスト(例文ボタン)。en は日本語特有の題材(nekonige 等)を避けた汎用例。
+// 建议按钮（示例句按钮）。en 版本避开日语特有的题材（nekonige 等），使用通用示例。
 export const SUGGESTIONS_BY_LANG = {
     ja: [
         {label: 'ネコ逃げゲームを教えて', text: 'https://github.com/champierre/nekonige で紹介しているネコ逃げゲームの作り方を教えて', disableBlocks: true},
@@ -102,5 +154,9 @@ export const SUGGESTIONS_BY_LANG = {
     en: [
         {label: 'Make the cat move', text: 'Make the cat move right continuously when the green flag is clicked'},
         {label: 'Make a chase game', text: 'Make a simple game where the cat follows the mouse pointer'}
+    ],
+    zh: [
+        {label: '让小猫动起来', text: '让小猫在点击绿旗后一直向右移动'},
+        {label: '制作追逐游戏', text: '制作一个简单的游戏，让小猫跟随鼠标指针'}
     ]
 };

@@ -1,6 +1,6 @@
-// 簡易DSL → scratch-vm のランタイムブロック形式への変換と、その逆変換
+// 简易 DSL → scratch-vm 的运行时区块格式的转换，及其逆转换
 //
-// DSL形式:
+// DSL 格式:
 //   scripts: [
 //     {x?, y?, blocks: [
 //       {"opcode": "event_whenflagclicked"},
@@ -9,8 +9,8 @@
 //       ]}
 //     ]}
 //   ]
-// inputs の値はリテラル(数値/文字列)か、ネストしたブロックオブジェクト({"opcode": ...})。
-// fields の値は文字列(ドロップダウン選択肢、変数名など)。
+// inputs 的值可以是字面量（数字/字符串）或嵌套的区块对象({"opcode": ...})。
+// fields 的值是字符串（下拉菜单选项、变量名等）。
 
 import {BLOCK_SPECS, LITERAL_SHADOWS} from './block-specs';
 
@@ -50,7 +50,7 @@ export const buildScripts = (scripts, ctx) => {
     return blocks;
 };
 
-// ブロック列を構築して先頭ブロックidを返す(next/parentを結線)
+// 构建区块列并返回首个区块 id（连接 next/parent）
 const buildStack = (defs, parentId, blocks, ctx, path) => {
     let firstId = null;
     let prevId = null;
@@ -78,7 +78,7 @@ const buildStack = (defs, parentId, blocks, ctx, path) => {
     return firstId;
 };
 
-// 単一ブロック(+shadow、ネストブロック、substack)を構築してidを返す
+// 构建单一区块（+shadow、嵌套区块、substack）并返回 id
 const buildBlock = (def, blocks, ctx, path) => {
     if (!isBlockDef(def)) {
         throw new BuildError(`${path}: ブロックは {"opcode": ...} 形式のオブジェクトである必要があります`);
@@ -103,14 +103,14 @@ const buildBlock = (def, blocks, ctx, path) => {
     const givenInputs = def.inputs || {};
     const givenFields = def.fields || {};
 
-    // 引数(inputs)
+    // 参数(inputs)
     for (const [name, argType] of Object.entries(spec.args || {})) {
-        // Claudeが inputs/fields どちらに書いても受け付ける
+        // 接受 Claude 写在 inputs/fields 任意一个的位置
         const value = givenInputs[name] !== undefined ? givenInputs[name] : givenFields[name];
         block.inputs[name] = buildInput(name, argType, value, id, blocks, ctx, `${path}.inputs.${name}`);
     }
 
-    // フィールド(ドロップダウン・変数参照)
+    // 字段（下拉菜单・变量引用）
     for (const [name, fieldSpec] of Object.entries(spec.fields || {})) {
         const value = givenFields[name] !== undefined ? givenFields[name] : givenInputs[name];
         if (value === undefined || value === null) {
@@ -122,7 +122,7 @@ const buildBlock = (def, blocks, ctx, path) => {
         block.fields[name] = buildField(name, fieldSpec, String(value), ctx, `${path}.fields.${name}`);
     }
 
-    // C型ブロックの内包スタック
+    // C 型区块的内含堆栈
     const substackCount = spec.substacks || 0;
     if (substackCount >= 1) {
         const sub = def.substack || def.SUBSTACK;
@@ -139,7 +139,7 @@ const buildBlock = (def, blocks, ctx, path) => {
         }
     }
 
-    // control_stop の mutation
+    // control_stop 的 mutation
     if (spec.mutationStop) {
         const stopOption = block.fields.STOP_OPTION ? block.fields.STOP_OPTION.value : 'all';
         block.mutation = {
@@ -152,8 +152,8 @@ const buildBlock = (def, blocks, ctx, path) => {
     return id;
 };
 
-// 選択値の検証(values: 静的許可値 / dynamic: VM由来の許可値カテゴリ)
-// dynamic 指定があるのに ctx.dynamicValues が無い場合(VMなしのテスト等)は検証しない
+// 选择值的验证（values: 静态允许值 / dynamic: VM 衍生的允许值类别）
+// 有 dynamic 指定但没有 ctx.dynamicValues 时（如无 VM 的测试等）不验证
 const validateChoice = (spec, value, ctx, path, what) => {
     if (!spec.values && !spec.dynamic) return;
     if (spec.dynamic && !ctx.dynamicValues) return;
@@ -165,9 +165,9 @@ const validateChoice = (spec, value, ctx, path, what) => {
         allowed.map(v => `"${v}"`).join(', '));
 };
 
-// 1つのinput(リテラルshadow / メニューshadow / ネストブロック)を構築
+// 构建一个 input（字面量 shadow / 菜单 shadow / 嵌套区块）
 const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
-    // boolean入力: ネストブロックのみ、shadowなし
+    // boolean 输入：仅嵌套区块，无 shadow
     if (argType === 'boolean') {
         if (value === undefined || value === null) {
             return {name, block: null, shadow: null};
@@ -179,7 +179,7 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
         return {name, block: nestedId, shadow: null};
     }
 
-    // メニュー入力: メニューshadow(+任意でネストブロック)
+    // 菜单输入：菜单 shadow（+可选嵌套区块）
     if (typeof argType === 'object' && argType.menu) {
         const isNested = isBlockDef(value);
         const menuValue = isNested || value === undefined || value === null ?
@@ -206,7 +206,7 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
         return {name, block: shadowId, shadow: shadowId};
     }
 
-    // ブロードキャスト入力
+    // 广播输入
     if (argType === 'broadcast') {
         if (value === undefined || value === null || isBlockDef(value)) {
             throw new BuildError(`${path}: ブロードキャスト名(文字列)が必要です`);
@@ -233,7 +233,7 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
         return {name, block: shadowId, shadow: shadowId};
     }
 
-    // リテラル入力(数値・文字列・色)
+    // 字面量输入（数字・字符串・颜色）
     const literalSpec = LITERAL_SHADOWS[argType];
     if (!literalSpec) {
         throw new BuildError(`${path}: 不明な引数タイプ ${JSON.stringify(argType)}`);
@@ -262,7 +262,7 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
     return {name, block: shadowId, shadow: shadowId};
 };
 
-// input内にネストされる値ブロックを構築
+// 构建嵌套在 input内的值区块
 const buildReporter = (def, parentId, blocks, ctx, path, requireBoolean) => {
     const spec = BLOCK_SPECS[def.opcode];
     if (!spec) {
@@ -279,7 +279,7 @@ const buildReporter = (def, parentId, blocks, ctx, path, requireBoolean) => {
     return id;
 };
 
-// フィールド値を構築(変数系はid解決)
+// 构建字段值（变量系则解析 id）
 const buildField = (name, fieldSpec, value, ctx, path) => {
     if (fieldSpec.variable !== undefined) {
         const variable = ctx.resolveVariable(value, fieldSpec.variable);
@@ -289,7 +289,7 @@ const buildField = (name, fieldSpec, value, ctx, path) => {
     return {name, value};
 };
 
-// ---- 逆変換: ランタイムブロック → DSL(get_project_state 用の要約) ----
+// ---- 逆转换：运行时区块 → DSL（用于 get_project_state 的摘要） ----
 
 /**
  * targetのBlocksコンテナをDSL形式に逆変換する。
@@ -333,7 +333,7 @@ const blockToDsl = (block, all) => {
         const child = all[input.block];
         if (!child) continue;
         if (child.shadow) {
-            // shadowブロック → リテラル値
+            // shadow 区块 → 字面量值
             const field = Object.values(child.fields || {})[0];
             if (field) inputs[name] = field.value;
         } else {

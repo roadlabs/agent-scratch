@@ -1,8 +1,8 @@
-// opcode → scratchblocks 表示テキストのマッピング
-// 引数は [] で省略表現。実際の値は不要（ブロックの形が伝わればよい）
+// opcode → scratchblocks 显示文本的映射
+// 参数用 [] 省略表示。实际值不需要（只要能传达区块的形状即可）
 
 const EN = {
-    // ---- イベント ----
+    // ---- 事件 ----
     event_whenflagclicked: 'when flag clicked',
     event_whenkeypressed: 'when [space v] key pressed',
     event_whenthisspriteclicked: 'when this sprite clicked',
@@ -13,7 +13,7 @@ const EN = {
     event_broadcast: 'broadcast [message1 v]',
     event_broadcastandwait: 'broadcast [message1 v] and wait',
 
-    // ---- 動き ----
+    // ---- 运动 ----
     motion_movesteps: 'move (10) steps',
     motion_turnright: 'turn cw (15) degrees',
     motion_turnleft: 'turn ccw (15) degrees',
@@ -33,7 +33,7 @@ const EN = {
     motion_yposition: '(y position)',
     motion_direction: '(direction)',
 
-    // ---- 見た目 ----
+    // ---- 外观 ----
     looks_sayforsecs: 'say [Hello!] for (2) seconds',
     looks_say: 'say [Hello!]',
     looks_thinkforsecs: 'think [Hmm...] for (2) seconds',
@@ -55,7 +55,7 @@ const EN = {
     looks_backdropnumbername: '(backdrop [number v])',
     looks_size: '(size)',
 
-    // ---- 音 ----
+    // ---- 声音 ----
     sound_playuntildone: 'play sound [Meow v] until done',
     sound_play: 'start sound [Meow v]',
     sound_stopallsounds: 'stop all sounds',
@@ -66,7 +66,7 @@ const EN = {
     sound_setvolumeto: 'set volume to (100) %',
     sound_volume: '(volume)',
 
-    // ---- 制御 ----
+    // ---- 控制 ----
     control_wait: 'wait (1) seconds',
     control_repeat: 'repeat (10)',
     control_forever: 'forever',
@@ -79,7 +79,7 @@ const EN = {
     control_create_clone_of: 'create clone of [myself v]',
     control_delete_this_clone: 'delete this clone',
 
-    // ---- 調べる ----
+    // ---- 侦测 ----
     sensing_touchingobject: '<touching [mouse-pointer v] ?>',
     sensing_touchingcolor: '<touching color [#ff0000] ?>',
     sensing_coloristouchingcolor: '<color [#ff0000] is touching [#0000ff] ?>',
@@ -97,7 +97,7 @@ const EN = {
     sensing_dayssince2000: '(days since 2000)',
     sensing_username: '(username)',
 
-    // ---- 演算 ----
+    // ---- 运算 ----
     operator_add: '((1) + (2))',
     operator_subtract: '((1) - (2))',
     operator_multiply: '((1) * (2))',
@@ -117,14 +117,14 @@ const EN = {
     operator_round: '(round (3.4))',
     operator_mathop: '([sqrt v] of (9))',
 
-    // ---- 変数 ----
+    // ---- 变量 ----
     data_variable: '(my variable)',
     data_setvariableto: 'set [my variable v] to (0)',
     data_changevariableby: 'change [my variable v] by (1)',
     data_showvariable: 'show variable [my variable v]',
     data_hidevariable: 'hide variable [my variable v]',
 
-    // ---- リスト ----
+    // ---- 列表 ----
     data_listcontents: '(my list)',
     data_addtolist: 'add [thing] to [my list v]',
     data_deleteoflist: 'delete (1) of [my list v]',
@@ -138,7 +138,7 @@ const EN = {
     data_showlist: 'show list [my list v]',
     data_hidelist: 'hide list [my list v]',
 
-    // ---- ペン拡張 ----
+    // ---- 画笔扩展 ----
     pen_clear: 'erase all',
     pen_stamp: 'stamp',
     pen_penDown: 'pen down',
@@ -151,7 +151,7 @@ const EN = {
 };
 
 const JA = {
-    // ---- イベント ----
+    // ---- 事件 ----
     event_whenflagclicked: '@greenFlag が押されたとき',
     event_whenkeypressed: '[スペース v] キーが押されたとき',
     event_whenthisspriteclicked: 'このスプライトが押されたとき',
@@ -162,7 +162,7 @@ const JA = {
     event_broadcast: '[メッセージ1 v] を送る',
     event_broadcastandwait: '[メッセージ1 v] を送って待つ',
 
-    // ---- 動き ----
+    // ---- 运动 ----
     motion_movesteps: '(10) 歩動かす',
     motion_turnright: '@turnRight (15) 度回す',
     motion_turnleft: '@turnLeft (15) 度回す',
@@ -182,7 +182,7 @@ const JA = {
     motion_yposition: '(y座標 :: motion)',
     motion_direction: '(向き :: motion)',
 
-    // ---- 見た目 ----
+    // ---- 外观 ----
     looks_sayforsecs: '[こんにちは！] と (2) 秒言う',
     looks_say: '[こんにちは！] と言う',
     looks_thinkforsecs: '[うーん…] と (2) 秒考える',
@@ -204,7 +204,7 @@ const JA = {
     looks_backdropnumbername: '(背景の [番号 v])',
     looks_size: '(大きさ :: looks)',
 
-    // ---- 音 ----
+    // ---- 声音 ----
     sound_playuntildone: '終わるまで [ニャー v] の音を鳴らす :: sound',
     sound_play: '[ニャー v] の音を鳴らす :: sound',
     sound_stopallsounds: 'すべての音を止める :: sound',
@@ -215,7 +215,7 @@ const JA = {
     sound_setvolumeto: '音量を (100) %にする :: sound',
     sound_volume: '(音量 :: sound)',
 
-    // ---- 制御 ----
+    // ---- 控制 ----
     control_wait: '(1) 秒待つ',
     control_repeat: '(10) 回繰り返す',
     control_forever: 'ずっと',
@@ -228,7 +228,7 @@ const JA = {
     control_create_clone_of: '[自分自身 v] のクローンを作る',
     control_delete_this_clone: 'このクローンを削除する',
 
-    // ---- 調べる ----
+    // ---- 侦测 ----
     sensing_touchingobject: '<[マウスのポインター v] に触れた>',
     sensing_touchingcolor: '<[#ff0000] 色に触れた>',
     sensing_coloristouchingcolor: '<[#ff0000] 色が [#0000ff] 色に触れた>',
@@ -246,7 +246,7 @@ const JA = {
     sensing_dayssince2000: '(2000年からの日数)',
     sensing_username: '(ユーザー名)',
 
-    // ---- 演算 ----
+    // ---- 运算 ----
     operator_add: '((1) + (2))',
     operator_subtract: '((1) - (2))',
     operator_multiply: '((1) * (2))',
@@ -266,14 +266,14 @@ const JA = {
     operator_round: '((3.4) を四捨五入)',
     operator_mathop: '([sqrt v] の (9))',
 
-    // ---- 変数 ----
+    // ---- 变量 ----
     data_variable: '(変数)',
     data_setvariableto: '[変数 v] を (0) にする',
     data_changevariableby: '[変数 v] を (1) ずつ変える',
     data_showvariable: '変数 [変数 v] を表示する',
     data_hidevariable: '変数 [変数 v] を隠す',
 
-    // ---- リスト ----
+    // ---- 列表 ----
     data_listcontents: '(リスト)',
     data_addtolist: '[もの] を [リスト v] に追加する',
     data_deleteoflist: '[リスト v] の (1) 番目を削除する',
@@ -287,7 +287,7 @@ const JA = {
     data_showlist: 'リスト [リスト v] を表示する',
     data_hidelist: 'リスト [リスト v] を隠す',
 
-    // ---- ペン拡張 ----
+    // ---- 画笔扩展 ----
     pen_clear: '全部消す',
     pen_stamp: 'スタンプ',
     pen_penDown: 'ペンを下ろす',
@@ -302,28 +302,182 @@ const JA = {
 export const BLOCK_LABELS = EN;
 export const BLOCK_LABELS_JA = JA;
 
+const ZH = {
+    // ---- 事件 ----
+    event_whenflagclicked: '当绿旗被点击',
+    event_whenkeypressed: '当按下 [空格 v] 键',
+    event_whenthisspriteclicked: '当角色被点击',
+    event_whenstageclicked: '当舞台被点击',
+    event_whenbackdropswitchesto: '当背景切换到 [backdrop1 v]',
+    event_whengreaterthan: '当 [音量 v] > (10)',
+    event_whenbroadcastreceived: '当接收到 [消息1 v]',
+    event_broadcast: '广播 [消息1 v]',
+    event_broadcastandwait: '广播 [消息1 v] 并等待',
+
+    // ---- 运动 ----
+    motion_movesteps: '移动 (10) 步',
+    motion_turnright: '右转 (15) 度',
+    motion_turnleft: '左转 (15) 度',
+    motion_goto: '移到 [随机位置 v]',
+    motion_gotoxy: '移到 x: (0) y: (0)',
+    motion_glideto: '在 (1) 秒内滑到 [随机位置 v]',
+    motion_glidesecstoxy: '在 (1) 秒内滑到 x: (0) y: (0)',
+    motion_pointindirection: '面向 (90) 度',
+    motion_pointtowards: '面向 [鼠标指针 v]',
+    motion_changexby: '将 x 增加 (10)',
+    motion_setx: '将 x 设为 (0)',
+    motion_changeyby: '将 y 增加 (10)',
+    motion_sety: '将 y 设为 (0)',
+    motion_ifonedgebounce: '碰到边缘就反弹',
+    motion_setrotationstyle: '将旋转方式设为 [左右翻转 v]',
+    motion_xposition: '(x 坐标)',
+    motion_yposition: '(y 坐标)',
+    motion_direction: '(方向)',
+
+    // ---- 外观 ----
+    looks_sayforsecs: '说 [你好！] (2) 秒',
+    looks_say: '说 [你好！]',
+    looks_thinkforsecs: '思考 [嗯……] (2) 秒',
+    looks_think: '思考 [嗯……]',
+    looks_switchcostumeto: '将造型切换为 [造型1 v]',
+    looks_nextcostume: '下一个造型',
+    looks_switchbackdropto: '将背景切换为 [背景1 v]',
+    looks_nextbackdrop: '下一个背景',
+    looks_changesizeby: '将大小增加 (10)',
+    looks_setsizeto: '将大小设为 (100) %',
+    looks_changeeffectby: '将 [颜色 v] 特效增加 (25)',
+    looks_seteffectto: '将 [颜色 v] 特效设为 (0)',
+    looks_cleargraphiceffects: '清除图形特效',
+    looks_show: '显示',
+    looks_hide: '隐藏',
+    looks_gotofrontback: '移到最 [前 v] 层',
+    looks_goforwardbackwardlayers: '将 (1) 层 [前 v]',
+    looks_costumenumbername: '(造型 [编号 v])',
+    looks_backdropnumbername: '(背景 [编号 v])',
+    looks_size: '(大小)',
+
+    // ---- 声音 ----
+    sound_playuntildone: '播放声音 [喵 v] 等待播完',
+    sound_play: '播放声音 [喵 v]',
+    sound_stopallsounds: '停止所有声音',
+    sound_changeeffectby: '将 [音调 v] 特效增加 (10)',
+    sound_seteffectto: '将 [音调 v] 特效设为 (100)',
+    sound_cleareffects: '清除声音特效',
+    sound_changevolumeby: '将音量增加 (-10)',
+    sound_setvolumeto: '将音量设为 (100) %',
+    sound_volume: '(音量)',
+
+    // ---- 控制 ----
+    control_wait: '等待 (1) 秒',
+    control_repeat: '重复 (10) 次',
+    control_forever: '重复执行',
+    control_if: '如果 <> 那么',
+    control_if_else: '如果 <> 那么 {} 否则',
+    control_wait_until: '等待 <>',
+    control_repeat_until: '重复直到 <>',
+    control_stop: '停止 [全部 v]',
+    control_start_as_clone: '当作为克隆体启动',
+    control_create_clone_of: '克隆 [自己 v]',
+    control_delete_this_clone: '删除此克隆体',
+
+    // ---- 侦测 ----
+    sensing_touchingobject: '<碰到 [鼠标指针 v] ?>',
+    sensing_touchingcolor: '<碰到颜色 [#ff0000] ?>',
+    sensing_coloristouchingcolor: '<颜色 [#ff0000] 碰到 [#0000ff] ?>',
+    sensing_distanceto: '([鼠标指针 v] 的距离)',
+    sensing_askandwait: '询问 [你叫什么名字？] 并等待',
+    sensing_answer: '(答案)',
+    sensing_keypressed: '<按下 [空格 v] 键?>',
+    sensing_mousedown: '<鼠标按下?>',
+    sensing_mousex: '(鼠标 x)',
+    sensing_mousey: '(鼠标 y)',
+    sensing_setdragmode: '将拖动模式设为 [可拖动 v]',
+    sensing_loudness: '(响度)',
+    sensing_timer: '(计时器)',
+    sensing_resettimer: '重置计时器',
+    sensing_dayssince2000: '(2000年以来的天数)',
+    sensing_username: '(用户名)',
+
+    // ---- 运算 ----
+    operator_add: '((1) + (2))',
+    operator_subtract: '((1) - (2))',
+    operator_multiply: '((1) * (2))',
+    operator_divide: '((1) / (2))',
+    operator_random: '(随机取数 (1) 到 (10))',
+    operator_gt: '<(1) > (2)>',
+    operator_lt: '<(1) < (2)>',
+    operator_equals: '<(1) = (2)>',
+    operator_and: '<<> 且 <>>',
+    operator_or: '<<> 或 <>>',
+    operator_not: '<非 <>>',
+    operator_join: '([你好 ] 和 [世界])',
+    operator_letter_of: '([苹果] 的 (1) 的字符)',
+    operator_length: '([苹果] 的长度)',
+    operator_contains: '<[苹果] 包含 [a]?>',
+    operator_mod: '((10) 除以 (3) 的余数)',
+    operator_round: '(四舍五入 (3.4))',
+    operator_mathop: '([平方根 v] 的 (9))',
+
+    // ---- 变量 ----
+    data_variable: '(我的变量)',
+    data_setvariableto: '将 [我的变量 v] 设为 (0)',
+    data_changevariableby: '将 [我的变量 v] 增加 (1)',
+    data_showvariable: '显示变量 [我的变量 v]',
+    data_hidevariable: '隐藏变量 [我的变量 v]',
+
+    // ---- 列表 ----
+    data_listcontents: '(我的列表)',
+    data_addtolist: '将 [东西] 加入 [我的列表 v]',
+    data_deleteoflist: '删除 [我的列表 v] 的 (1)',
+    data_deletealloflist: '删除 [我的列表 v] 的全部',
+    data_insertatlist: '在 [我的列表 v] 的 (1) 插入 [东西]',
+    data_replaceitemoflist: '将 [我的列表 v] 的 (1) 替换为 [东西]',
+    data_itemoflist: '([我的列表 v] 的 (1))',
+    data_itemnumoflist: '([我的列表 v] 中 [东西] 的位置)',
+    data_lengthoflist: '([我的列表 v] 的长度)',
+    data_listcontainsitem: '<[我的列表 v] 包含 [东西]?>',
+    data_showlist: '显示列表 [我的列表 v]',
+    data_hidelist: '隐藏列表 [我的列表 v]',
+
+    // ---- 画笔扩展 ----
+    pen_clear: '全部擦除',
+    pen_stamp: '图章',
+    pen_penDown: '落笔',
+    pen_penUp: '抬笔',
+    pen_setPenColorToColor: '将画笔颜色设为 [#ff0000]',
+    pen_changePenColorParamBy: '将画笔 [颜色 v] 增加 (10)',
+    pen_setPenColorParamTo: '将画笔 [颜色 v] 设为 (50)',
+    pen_changePenSizeBy: '将画笔粗细增加 (1)',
+    pen_setPenSizeTo: '将画笔粗细设为 (1)'
+};
+
+export const BLOCK_LABELS_ZH = ZH;
+
 export const getBlockLabel = (opcode, lang) => {
     if (lang && lang.startsWith('ja')) {
         return JA[opcode] || EN[opcode];
     }
+    if (lang && lang.startsWith('zh')) {
+        return ZH[opcode] || EN[opcode];
+    }
     return EN[opcode];
 };
 
-// ---- 日本語ブロック名 → opcode の逆引き ----
-// AI が opcode でなく日本語名(「ずっと」「10歩動かす」等)でブロックに言及した
-// 場合でもブロック画像に変換できるよう、JA ラベルから逆引き辞書を自動生成する。
-// (システムプロンプトの「opcodeで書く」指示が守られないモデルへのロジック側の救済)
+// ---- 日语区块名 → opcode 的逆引き ----
+// 即使 AI 不是用 opcode 而是使用日语名称（「ずっと」「10歩動かす」等）来描述区块，
+// 为了也能转换为区块图像，从 JA 标签自动生成逆引き字典。
+//（对于不遵守"请用 opcode 书写"指示的模型的逻辑侧补救）
 
-// 表記ゆれの吸収: アイコン参照・引数プレースホルダ・数字・空白・句読点を除去
+// 吸收书写差异：去除图标引用・参数占位符・数字・空白・标点符号
 const normalizeJaName = s => String(s)
-    .replace(/@\w+/g, '')          // @greenFlag 等のアイコン参照
-    .replace(/\[[^\]]*\]/g, '')    // [スペース v] 等のメニュー
-    .replace(/\([^)]*\)/g, '')     // (10) 等の引数
-    .replace(/[0-9０-９]+/g, '')   // ラベル外に書かれた数値(「10歩動かす」等)
+    .replace(/@\w+/g, '')          // @greenFlag 等图标引用
+    .replace(/\[[^\]]*\]/g, '')    // [スペース v] 等菜单
+    .replace(/\([^)]*\)/g, '')     // (10) 等参数
+    .replace(/[0-9０-９]+/g, '')   // 写在标签外的数字（「10歩動かす」等）
     .replace(/[\s　、。，．,.!?！？「」『』:：;；・〜~ー-]/g, '')
     .toLowerCase();
 
-// モデルが書きがちな言い換え(正規化後のJAラベルと一致しない表現)
+// 模型常写的言い換え（与规范化后的 JA 标签不一致的表达）
 const JA_NAME_ALIASES = {
     '緑の旗がクリックされたとき': 'event_whenflagclicked',
     '旗がクリックされたとき': 'event_whenflagclicked',
@@ -339,11 +493,11 @@ const JA_NAME_ALIASES = {
 
 const JA_NAME_TO_OPCODE = (() => {
     const map = {};
-    // エイリアスを優先登録
+    // 优先注册别名
     for (const [name, opcode] of Object.entries(JA_NAME_ALIASES)) {
         map[normalizeJaName(name)] = opcode;
     }
-    // JAラベルから自動生成(先勝ち)
+    // 从 JA 标签自动生成（先到先得）
     for (const [opcode, label] of Object.entries(JA)) {
         const key = normalizeJaName(label);
         if (key.length >= 2 && !map[key]) map[key] = opcode;
@@ -351,14 +505,14 @@ const JA_NAME_TO_OPCODE = (() => {
     return map;
 })();
 
-// 日本語のブロック名らしき文字列から opcode を引く(該当なしは null)
+// 从类似日语区块名的字符串查找 opcode（无匹配则返回 null）
 export const findOpcodeByJaName = text => {
     const key = normalizeJaName(text);
     return (key && JA_NAME_TO_OPCODE[key]) || null;
 };
 
-// key が cand の部分列(順序を保って含まれる)か
-// 例: 「回転方法をにする」⊂「回転方法を左右に反転にする」(メニュー値の挿入を許容)
+// key 是否为 cand 的子序列（保持顺序包含）
+// 例: 「回転方法をにする」⊂「回転方法を左右に反転にする」（允许菜单值的插入）
 const isSubsequence = (key, cand) => {
     let i = 0;
     for (const ch of cand) {
@@ -368,8 +522,8 @@ const isSubsequence = (key, cand) => {
     return i === key.length;
 };
 
-// 「ブロック画像の直後の括弧書き」が同じブロックの言い換えかを判定する。
-// 画像+(同じ日本語名)の二重表示を省くために使う。
+// 判断"区块图像紧跟的括号注释"是否为同一区块的言い換え。
+// 用于避免图像+(相同日语名)的双重显示。
 export const isRedundantJaAnnotation = (text, opcode) => {
     if (findOpcodeByJaName(text) === opcode) return true;
     const label = JA[opcode];
@@ -377,6 +531,6 @@ export const isRedundantJaAnnotation = (text, opcode) => {
     const key = normalizeJaName(label);
     const cand = normalizeJaName(text);
     if (!key || !cand || key.length < 3) return false;
-    if (cand.length > key.length * 3 + 10) return false; // 長すぎる説明文は別物とみなす
+    if (cand.length > key.length * 3 + 10) return false; // 过长的说明文视为不同物
     return isSubsequence(key, cand);
 };

@@ -1,16 +1,16 @@
-// Scratch 3.0 主要opcodeの引数仕様テーブル
+// Scratch 3.0 主要 opcode 的参数规格表
 //
-// args の値:
+// args 的值:
 //   'number' | 'positive_number' | 'whole_number' | 'integer' | 'angle' |
 //   'string' | 'color' | 'boolean' | 'broadcast' |
 //   {menu: '<menu opcode>', field: '<field name>', default: '<value>'}
-// fields の値:
-//   {} (プレーンなドロップダウン) | {variable: ''} | {variable: 'list'} |
+// fields 的值:
+//   {} (普通下拉菜单) | {variable: ''} | {variable: 'list'} |
 //   {variable: 'broadcast_msg'}
-// shape: 'hat' | 'cap' | 'reporter' | 'boolean' (省略時は通常のスタックブロック)
-// substacks: 1 | 2 (C型ブロックの内包スタック数)
+// shape: 'hat' | 'cap' | 'reporter' | 'boolean'（省略时为普通堆栈区块）
+// substacks: 1 | 2（C 型区块的内含堆栈数）
 
-// キー名の許可値(event_whenkeypressed / sensing_keypressed)
+// 键名的允许值(event_whenkeypressed / sensing_keypressed)
 export const KEY_OPTIONS = [
     'space', 'up arrow', 'down arrow', 'left arrow', 'right arrow', 'enter', 'any',
     ...'abcdefghijklmnopqrstuvwxyz'.split(''),
@@ -23,7 +23,7 @@ const MATHOPS = ['abs', 'floor', 'ceiling', 'sqrt', 'sin', 'cos', 'tan', 'asin',
 const PEN_COLOR_PARAMS = ['color', 'saturation', 'brightness', 'transparency'];
 
 export const BLOCK_SPECS = {
-    // ---- イベント ----
+    // ---- 事件 ----
     event_whenflagclicked: {shape: 'hat'},
     event_whenkeypressed: {shape: 'hat', fields: {KEY_OPTION: {values: KEY_OPTIONS}}},
     event_whenthisspriteclicked: {shape: 'hat'},
@@ -34,7 +34,7 @@ export const BLOCK_SPECS = {
     event_broadcast: {args: {BROADCAST_INPUT: 'broadcast'}},
     event_broadcastandwait: {args: {BROADCAST_INPUT: 'broadcast'}},
 
-    // ---- 動き ----
+    // ---- 运动 ----
     motion_movesteps: {args: {STEPS: 'number'}},
     motion_turnright: {args: {DEGREES: 'number'}},
     motion_turnleft: {args: {DEGREES: 'number'}},
@@ -54,7 +54,7 @@ export const BLOCK_SPECS = {
     motion_yposition: {shape: 'reporter'},
     motion_direction: {shape: 'reporter'},
 
-    // ---- 見た目 ----
+    // ---- 外观 ----
     looks_sayforsecs: {args: {MESSAGE: 'string', SECS: 'number'}},
     looks_say: {args: {MESSAGE: 'string'}},
     looks_thinkforsecs: {args: {MESSAGE: 'string', SECS: 'number'}},
@@ -76,7 +76,7 @@ export const BLOCK_SPECS = {
     looks_backdropnumbername: {shape: 'reporter', fields: {NUMBER_NAME: {values: ['number', 'name']}}},
     looks_size: {shape: 'reporter'},
 
-    // ---- 音 ----
+    // ---- 声音 ----
     sound_playuntildone: {args: {SOUND_MENU: {menu: 'sound_sounds_menu', field: 'SOUND_MENU', default: '', dynamic: 'sounds'}}},
     sound_play: {args: {SOUND_MENU: {menu: 'sound_sounds_menu', field: 'SOUND_MENU', default: '', dynamic: 'sounds'}}},
     sound_stopallsounds: {},
@@ -87,7 +87,7 @@ export const BLOCK_SPECS = {
     sound_setvolumeto: {args: {VOLUME: 'number'}},
     sound_volume: {shape: 'reporter'},
 
-    // ---- 制御 ----
+    // ---- 控制 ----
     control_wait: {args: {DURATION: 'positive_number'}},
     control_repeat: {args: {TIMES: 'whole_number'}, substacks: 1},
     control_forever: {substacks: 1, shape: 'cap'},
@@ -100,7 +100,7 @@ export const BLOCK_SPECS = {
     control_create_clone_of: {args: {CLONE_OPTION: {menu: 'control_create_clone_of_menu', field: 'CLONE_OPTION', default: '_myself_', values: ['_myself_'], dynamic: 'sprites'}}},
     control_delete_this_clone: {shape: 'cap'},
 
-    // ---- 調べる ----
+    // ---- 侦测 ----
     sensing_touchingobject: {shape: 'boolean', args: {TOUCHINGOBJECTMENU: {menu: 'sensing_touchingobjectmenu', field: 'TOUCHINGOBJECTMENU', default: '_mouse_', values: ['_mouse_', '_edge_'], dynamic: 'sprites'}}},
     sensing_touchingcolor: {shape: 'boolean', args: {COLOR: 'color'}},
     sensing_coloristouchingcolor: {shape: 'boolean', args: {COLOR: 'color', COLOR2: 'color'}},
@@ -118,7 +118,7 @@ export const BLOCK_SPECS = {
     sensing_dayssince2000: {shape: 'reporter'},
     sensing_username: {shape: 'reporter'},
 
-    // ---- 演算 ----
+    // ---- 运算 ----
     operator_add: {shape: 'reporter', args: {NUM1: 'number', NUM2: 'number'}},
     operator_subtract: {shape: 'reporter', args: {NUM1: 'number', NUM2: 'number'}},
     operator_multiply: {shape: 'reporter', args: {NUM1: 'number', NUM2: 'number'}},
@@ -138,14 +138,14 @@ export const BLOCK_SPECS = {
     operator_round: {shape: 'reporter', args: {NUM: 'number'}},
     operator_mathop: {shape: 'reporter', fields: {OPERATOR: {values: MATHOPS}}, args: {NUM: 'number'}},
 
-    // ---- 変数 ----
+    // ---- 变量 ----
     data_variable: {shape: 'reporter', fields: {VARIABLE: {variable: ''}}},
     data_setvariableto: {fields: {VARIABLE: {variable: ''}}, args: {VALUE: 'string'}},
     data_changevariableby: {fields: {VARIABLE: {variable: ''}}, args: {VALUE: 'number'}},
     data_showvariable: {fields: {VARIABLE: {variable: ''}}},
     data_hidevariable: {fields: {VARIABLE: {variable: ''}}},
 
-    // ---- ペン拡張 ----
+    // ---- 画笔扩展 ----
     pen_clear: {},
     pen_stamp: {},
     pen_penDown: {},
@@ -156,7 +156,7 @@ export const BLOCK_SPECS = {
     pen_changePenSizeBy: {args: {SIZE: 'number'}},
     pen_setPenSizeTo: {args: {SIZE: 'number'}},
 
-    // ---- リスト ----
+    // ---- 列表 ----
     data_listcontents: {shape: 'reporter', fields: {LIST: {variable: 'list'}}},
     data_addtolist: {fields: {LIST: {variable: 'list'}}, args: {ITEM: 'string'}},
     data_deleteoflist: {fields: {LIST: {variable: 'list'}}, args: {INDEX: 'integer'}},
@@ -171,7 +171,7 @@ export const BLOCK_SPECS = {
     data_hidelist: {fields: {LIST: {variable: 'list'}}}
 };
 
-// リテラル値を表すshadowブロックの定義(引数タイプ → shadow opcode/フィールド名)
+// 表示字面值的 shadow 区块定义（参数类型 → shadow opcode/字段名）
 export const LITERAL_SHADOWS = {
     number: {opcode: 'math_number', field: 'NUM'},
     positive_number: {opcode: 'math_positive_number', field: 'NUM'},

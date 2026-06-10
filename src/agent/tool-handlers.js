@@ -1,4 +1,4 @@
-// 各ツール呼び出し → scratch-vm への反映
+// 各工具调用 → scratch-vm 的反映
 import {buildScripts, dslFromBlocks, uid, BuildError} from './block-builder';
 import {
     searchSprites, findSpriteByName,
@@ -7,7 +7,7 @@ import {
     searchBackdrops, findBackdropByName
 } from './library-search';
 
-// fetch_url ツール用のプロキシベース URL(試用モードと同じ Worker を兼用)
+// fetch_url 工具用的代理基础 URL（兼作试用模式相同的 Worker）
 const WORKER_BASE_URL = (() => {
     const raw = process.env.TRIAL_PROXY_URL || '';
     return raw.replace(/\/(v1\/)?chat\/completions$/, '').replace(/\/$/, '');
@@ -16,12 +16,12 @@ const WORKER_BASE_URL = (() => {
 const TRIAL_TOKEN_KEY = 'agent-scratch-trial-token';
 const getTrialToken = () => localStorage.getItem(TRIAL_TOKEN_KEY) || '';
 
-// 直接 fetch の取得上限(コンテキスト溢れ防止)
+// 直接 fetch 的获取上限（防止上下文溢出）
 const FETCH_URL_MAX_CHARS = 200 * 1024;
 
-// GitHub の URL を CORS 許可のある取得先に変換する(該当しなければ null)
+// 将 GitHub 的 URL 转换为允许 CORS 的获取目标（不符合则返回 null）
 // - github.com/{o}/{r}/blob/{branch}/{path} → raw.githubusercontent.com
-// - github.com/{o}/{r} (リポジトリルート) → api.github.com の README(raw)
+// - github.com/{o}/{r} (仓库根目录) → api.github.com 的 README(raw)
 export const toCorsFetchable = url => {
     const blob = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
     if (blob) {
@@ -41,12 +41,12 @@ export const toCorsFetchable = url => {
     return null;
 };
 
-// set_scripts 1回で組めるブロック数の上限(段階的な構築を強制)
+// set_scripts 一次可组装的区块数上限（强制分阶段构建）
 const MAX_BLOCKS_PER_CALL = 50;
 
 export class ToolError extends Error {}
 
-// name または id でターゲット(スプライト/ステージ)を探す
+// 通过 name 或 id 查找目标（角色/舞台）
 const findTarget = (vm, nameOrId) => {
     if (!nameOrId || /^(stage|ステージ)$/i.test(nameOrId)) {
         const stage = vm.runtime.getTargetForStage();
@@ -64,8 +64,8 @@ const findTarget = (vm, nameOrId) => {
     return byName;
 };
 
-// 変数/リスト/ブロードキャストの解決(なければ作成)。
-// 変数・リストはステージ(グローバル)に作る。
+// 变量/列表/广播的解析（不存在则创建）。
+// 变量・列表在舞台（全局）创建。
 const makeVariableResolver = (vm, target) => (name, type) => {
     const stage = vm.runtime.getTargetForStage();
     const existing = target.lookupVariableByNameAndType(name, type, false) ||
@@ -206,15 +206,15 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
         const t = findTarget(vm, target);
         const resolveVariable = makeVariableResolver(vm, t);
 
-        // スクリプト内に pen_ ブロックが含まれていたらペン拡張を自動ロード
+        // 如果脚本内包含 pen_ 区块，则自动加载画笔扩展
         const scriptJson = JSON.stringify(scripts);
-        // 注意: runtime 直下の「_extensions」は存在しない(CLAUDE.md「よくあるハマりポイント」参照)。
-        // 必ず vm.extensionManager.isExtensionLoaded を使うこと(過去2回退行・test/static-checks.js で検出)
+        // 注意：runtime 直下的「_extensions」不存在（参见 CLAUDE.md「常见陷阱」）。
+        // 务必使用 vm.extensionManager.isExtensionLoaded（过去2次回退・test/static-checks.js 检测到）
         if (scriptJson.includes('"pen_') && !vm.extensionManager.isExtensionLoaded('pen')) {
             await vm.extensionManager.loadExtensionURL('pen');
         }
 
-        // メニュー/フィールドの動的許可値(実在するスプライト名・コスチューム名など)
+        // 菜单/字段的动态允许值（存在的角色名/造型名等）
         const stage = vm.runtime.getTargetForStage();
         const dynamicValues = {
             sprites: vm.runtime.targets
@@ -225,13 +225,13 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
             backdrops: stage ? stage.getCostumes().map(c => c.name) : []
         };
 
-        // 失敗時ロールバック用スナップショット
+        // 失败时回滚用的快照
         const blocksSnapshot = {...t.blocks._blocks};
         const scriptsSnapshot = [...t.blocks._scripts];
         try {
             const newBlocks = buildScripts(scripts, {resolveVariable, dynamicValues});
 
-            // 一度に組める量を制限(巨大スクリプトの一括生成を防ぎ、段階的な構築を強制する)
+            // 限制一次可组装的量（防止巨大脚本的一键生成，强制分阶段构建）
             const realCount = Object.values(newBlocks).filter(b => !b.shadow).length;
             if (realCount > MAX_BLOCKS_PER_CALL) {
                 throw new ToolError(
@@ -239,12 +239,12 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
                     'スクリプトを分けて、2回目以降は append: true で追加してください');
             }
 
-            // 旧ブロックを参照する実行中スレッドを止めてから差し替える
-            // (残っていると _updateGlows が消えたブロックIDを光らせようとして
-            //  "Tried to glow block that does not exist" が毎フレーム発生する)
+            // 在替换之前停止引用旧区块的运行中线程
+            //（如果残留，_updateGlows 会尝试给已删除的区块 ID 发光，
+            //  导致每帧都出现"Tried to glow block that does not exist"）
             vm.runtime.stopForTarget(t);
             if (append) {
-                // 既存スクリプトの下に新しいスクリプトを配置する
+                // 将新脚本配置在现有脚本下方
                 const existingTops = t.blocks.getScripts()
                     .map(id => t.blocks.getBlock(id))
                     .filter(Boolean);
@@ -260,7 +260,7 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
             for (const block of Object.values(newBlocks)) {
                 t.blocks.createBlock(block);
             }
-            // 前フレームのグロー参照に旧ブロックIDが残らないようクリア
+            // 清除前一帧的 glow 引用中残留的旧区块 ID
             vm.runtime._scriptGlowsPreviousFrame = [];
             vm.setEditingTarget(t.id);
             vm.emitWorkspaceUpdate();
@@ -303,8 +303,8 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
     fetch_url: async ({url}) => {
         if (!url) throw new ToolError('url が必要です');
 
-        // GitHub の URL は CORS 許可のあるエンドポイントに変換してブラウザから直接取得する
-        // (Worker プロキシはお試しトークンが必要なため、自分のキーのユーザーでも動くように)
+        // 将 GitHub 的 URL 转换为允许 CORS 的端点，从浏览器直接获取
+        //（因为 Worker 代理需要试用令牌，使用自己的密钥的用户也能运行）
         const direct = toCorsFetchable(url);
         const token = getTrialToken();
         const useProxy = !direct && WORKER_BASE_URL && token;
@@ -315,11 +315,11 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
             endpoint = direct.url;
             headers = direct.headers;
         } else if (useProxy) {
-            // GitHub 以外の URL はプロキシ経由(お試しトークンがある場合のみ)
+            // GitHub 以外的 URL 经由代理（仅在有试用令牌时）
             endpoint = `${WORKER_BASE_URL}/fetch-url?url=${encodeURIComponent(url)}`;
             headers = {Authorization: `Bearer ${token}`};
         } else {
-            // 直接 fetch を試す(CORS許可のあるサイトなら成功する)
+            // 尝试直接 fetch（如果是有 CORS 许可的网站则成功）
             endpoint = url;
         }
 

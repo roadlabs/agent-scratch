@@ -1,107 +1,111 @@
-# Agent Scratch 開発ガイド
+# Agent Scratch 开发指南
 
-## プロジェクト概要
+## 项目概述
 
-Scratch エディタに組み込まれた AI エージェント。ユーザーの自然言語指示から Scratch プロジェクトを自動生成する。
+嵌入在 Scratch 编辑器中的 AI 代理。根据用户的自然语言指示自动生成 Scratch 项目。
 
-- **フロントエンド**: React + webpack、Scratch GUI を組み込み
-- **AI**: Anthropic Claude API / DeepSeek API / OpenAI API / Google Gemini API（Anthropic 以外は OpenAI 互換ループを共用。Gemini は generativelanguage.googleapis.com の OpenAI 互換エンドポイント）
-- **試用モード**: Cloudflare Worker プロキシ経由（DeepSeek deepseek-chat）
-- **デプロイ**: GitHub Pages（`npm run build` → `build/` ディレクトリ）
+- **前端**: React + webpack、嵌入 Scratch GUI
+- **AI**: Anthropic Claude API / DeepSeek API / OpenAI API / Google Gemini API（Anthropic 以外共用 OpenAI 兼容循环。Gemini 使用 generativelanguage.googleapis.com 的 OpenAI 兼容端点）
+- **试用模式**: 通过 Cloudflare Worker 代理（DeepSeek deepseek-chat）
+- **部署**: GitHub Pages（`npm run build` → `build/` 目录）
 
-## 開発環境のセットアップ
+## 开发环境设置
 
 ```sh
-cp .env.example .env   # APIキーを設定
+cp .env.example .env   # 设置 API 密钥
 npm install
 npm start              # http://localhost:8602/
 ```
 
-`.env` に `DEV_DEEPSEEK_API_KEY`・`DEV_ANTHROPIC_API_KEY`・`DEV_OPENAI_API_KEY`・`DEV_GEMINI_API_KEY` を設定するとブラウザへの手動入力が不要になる。本番ビルドにはキーは含まれない。
+在 `.env` 中设置 `DEV_DEEPSEEK_API_KEY`・`DEV_ANTHROPIC_API_KEY`・`DEV_OPENAI_API_KEY`・`DEV_GEMINI_API_KEY` 可以免去浏览器端的手动输入。本地生产构建不包含密钥。
 
-## ブランチ・PRルール
+## 分支・PR 规则
 
-- **`main` への直接 push は禁止**（ブランチ保護ルール）。必ず PR を作成する
-- **PR を勝手にマージしない**。マージはユーザーのレビュー・明示的な指示があってから行う（AI エージェントは PR 作成までで止めること）
-- マージ済みの PR のブランチには push しない。新しいブランチを切って PR を作る
-- ブランチ命名: `feat/`, `fix/`, `refactor/` などのプレフィックスを使う
+- **禁止直接 push 到 `main`**（分支保护规则）。必须创建 PR
+- **不要擅自合并 PR**。合并需要用户审查并明确指示后进行（AI 代理只需创建 PR 到此为止）
+- 不要 push 到已合并 PR 的分支。创建新分支并提交 PR
+- 分支命名：使用 `feat/`、`fix/`、`refactor/` 等前缀
 
-## 設計方針
+## 设计方针
 
-### ロジックで確実に(システムプロンプト頼みにしない)
+### 用逻辑确保可靠（不依赖系统提示词）
 
-AI の挙動はシステムプロンプトの指示だけに頼るとランダム性が残る。**強制できることはアルゴリズム(コード)で強制する**こと。
+AI 的行为如果只依赖系统提示词的指示会留下随机性。**能强制执行的就用算法（代码）强制执行**。
 
-- 守らせたい制約は、プロンプトのお願いではなく検証・変換・ガードで担保する。例:
-  - メニュー/フィールドの許可値・アセット実在チェック → `block-builder` で検証しエラーで自己修正させる(`block-specs` の `values` / `dynamic`)
-  - 1回のブロック数上限 → `set_scripts` で物理的に制限
-  - 日本語クエリ → `library-search` で英語へ自動変換
-  - `blocksEnabled=false` → ツール除外 + プロンプト + ハンドラ ToolError の3重ガード
-- プロンプトに残すのは、生成内容そのもの(文体・説明の構成など)アルゴリズム化できないものだけ。
-- **UI 状態の二重管理を避ける**。同じ値を state と ref / localStorage に二重に持つと「表示はオンなのに実際はオフ」のようなズレが起きる。単一の真実(source of truth)を1つに決め、送信時の値は引数で明示的に渡す(state 更新の非同期性に依存しない)。
+- 要遵守的约束条件，不靠提示词的请求而是通过验证、转换、守卫来保证。例如：
+  - 菜单/字段的允许值・资产存在性检查 → 用 `block-builder` 验证并通过错误让 AI自我修正（`block-specs` 的 `values` / `dynamic`）
+  - 每次的积木数量上限 → 在 `set_scripts` 中物理限制
+  - 日语查询 → 用 `library-search` 自动转换为英语
+  - `blocksEnabled=false` → 工具排除 + 提示词 + 处理器 ToolError 的 3 重守卫
+- 提示词中只保留生成内容本身（文体、说明的构成等）无法算法化的东西。
+- **避免 UI 状态的双重管理**。同一个值如果同时放在 state 和 ref / localStorage 中，会出现"显示是开但实际是关"这样的错位。确定单一真实来源（source of truth），发送时的值通过参数显式传递（不依赖 state 更新的异步性）。
 
-## アーキテクチャ
+## 架构
 
-### 多言語対応 (`src/i18n.js`)
+### 多语言支持 (`src/i18n.js`)
 
-- **UI と AI レスポンスの言語は Scratch の言語(`vm.getLocale()`)に追従する**。`localeToLang()` で日本語系(`ja` / `ja-Hira`)→ `'ja'`、それ以外 → `'en'` に畳む。判定の単一の真実は `vm.getLocale()` で、`app.jsx` の `useScratchLang` がポーリングして `lang` を配る(VM は locale 変更イベントを出さないため)。
-- **UI 文言を変更・追加するときは、必ず日英の両方(`STRINGS.ja` と `STRINGS.en`)を更新する**。片方だけ追加すると英語UIに日本語が混ざる/`undefined` が出る。`test/i18n.test.js` が両言語のキー集合一致を検証しているので、ハードコードの日本語を直接 JSX に書かず必ず `STRINGS[lang]` 経由にすること。ツール進捗ラベル(`tools.js` の `draftingLabel`/`summarizeToolCall`)・システムプロンプト(`system-prompt.js` の `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`)・エラーメッセージ(`agent-loop.js`)も同様に両言語を用意する。
-- **AI レスポンス言語はプロンプトのお願いではなく、`lang` でシステムプロンプト本体を日英で差し替えて担保する**(「ロジックで確実に」)。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)`。
+- **UI 和 AI 响应的语言跟随 Scratch 的语言（`vm.getLocale()`）**。`localeToLang()` 将日语系（`ja` / `ja-Hira`）→ `'ja'`、中文系（`zh*`）→ `'zh'`、其他 → `'en'`。判断的单一真实来源是 `vm.getLocale()`，`app.jsx` 的 `useScratchLang` 通过轮询分发 `lang`（因为 VM 不发出 locale 更改事件）。
+- **修改或添加 UI 文案时，必须同时更新日英两种语言（`STRINGS.ja` 和 `STRINGS.en`，现在还有 `STRINGS.zh`）**。只添加一种会导致英语 UI 中混入日语/出现 `undefined`。`test/i18n.test.js` 验证两种语言的键集合一致，所以不要在 JSX 中硬编码日语，而是一定要通过 `STRINGS[lang]` 获取。工具进度标签（`tools.js` 的 `draftingLabel`/`summarizeToolCall`）、系统提示词（`system-prompt.js` 的 `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`/`SYSTEM_PROMPT_ZH`）、错误消息（`agent-loop.js`）同样要准备多种语言版本。
+- **AI 响应语言不靠提示词请求，而是通过 `lang` 替换系统提示词本身来保证**（"用逻辑确保可靠"）。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)`。
 
-### エージェントループ (`src/agent/agent-loop.js`)
+### 代理循环 (`src/agent/agent-loop.js`)
 
-- Anthropic ループと OpenAI 互換ループ（`runOpenAICompatAgent`）の2実装。DeepSeek と OpenAI(GPT) は互換ループを共用
-- 会話履歴は **Anthropic 形式** で統一管理し、OpenAI 互換 API に渡す際に変換
-- GPT-5系は `max_tokens` 非対応のため `max_completion_tokens` を使用。ストリーミングの usage 取得は `stream_options: {include_usage: true}` でオプトイン
-- `blocksEnabled=false` のとき:
-  1. ツールリストから `set_scripts` を除外
-  2. システムプロンプトにブロック操作禁止の制約を追加
-  3. ハンドラ側でも `ToolError` を投げて物理的にブロック（3重ガード）
+- Anthropic 循环和 OpenAI 兼容循环（`runOpenAICompatAgent`）两种实现。DeepSeek 和 OpenAI (GPT) 共用兼容循环
+- 对话历史统一以 **Anthropic 格式** 管理，传递给 OpenAI 兼容 API 时进行转换
+- GPT-5 系列不支持 `max_tokens`（需使用 `max_completion_tokens`）。流式传输的 usage 获取通过 `stream_options: {include_usage: true}` 选择加入
+- `blocksEnabled=false` 时：
+  1. 从工具列表中排除 `set_scripts`
+  2. 在系统提示词中添加禁止块操作的约束
+  3. 在处理器端也抛出 `ToolError` 进行物理阻止（3 重守卫）
 
-### ツールハンドラ (`src/agent/tool-handlers.js`)
+### 工具处理器 (`src/agent/tool-handlers.js`)
 
-- `createToolHandlers(vm, {blocksEnabled})` — `blocksEnabled` を受け取る
-- `set_scripts` ではペン拡張の自動ロード: `vm.extensionManager.isExtensionLoaded('pen')`（`vm.runtime._extensions` は存在しないので使わない）
+- `createToolHandlers(vm, {blocksEnabled})` — 接收 `blocksEnabled`
+- `set_scripts` 中自动加载画笔扩展：`vm.extensionManager.isExtensionLoaded('pen')`（不使用 `vm.runtime._extensions` 因为它不存在）
 
-### ブロック画像表示 (`src/components/chat-panel/chat-panel.jsx`)
+### 积木图像显示 (`src/components/chat-panel/chat-panel.jsx`)
 
-- AI の返答中の opcode（`looks_hide` 等）を scratchblocks SVG に変換
-- ブラウザ言語が `ja` の場合は日本語ラベルで表示
-- 日本語ラベルは `src/agent/block-labels.js` の `JA` オブジェクトで管理
-- AI が opcode でなく日本語名(「ずっと」等)で書いた場合も、カギ括弧内の文字列を `findOpcodeByJaName`(JA ラベルからの自動生成逆引き+エイリアス)で解決してブロック画像化する。よくある言い換えは `JA_NAME_ALIASES` に追加する
-- **重要**: 日本語ラベルは scratchblocks ロケールファイル（`locales/ja.json`）の文字列と正確に一致させること。`@greenFlag`、`@turnRight` などのアイコン参照も含める
+- 将 AI 响应中的 opcode（`looks_hide` 等）转换为 scratchblocks SVG
+- 浏览器语言为 `ja` 时显示日语标签
+- 日语标签通过 `src/agent/block-labels.js` 的 `JA` 对象管理
+- AI 不用 opcode 而是用日语名称（「ずっと」等）编写时，也将通过引号内的字符串通过 `findOpcodeByJaName`（从 JA 标签自动生成的逆向查找 + 别名）解析为 opcode 并转换为积木图像。常见的换说法添加到 `JA_NAME_ALIASES`
+- **重要**：日语标签必须与 scratchblocks 区域设置文件（`locales/ja.json`）中的字符串精确一致。包括 `@greenFlag`、`@turnRight` 等图标引用
 
-### システムプロンプト (`src/agent/system-prompt.js`)
+### 系统提示词 (`src/agent/system-prompt.js`)
 
-- `BLOCK_SPECS` から opcode 仕様を動的生成（prompt caching のため揮発値を入れない）
-- ブロックに言及するときは opcode で書くよう AI に指示（UI が自動的にブロック画像に変換するため）
-- `blocksEnabled=false` 時は末尾に禁止制約を追記
+- 从 `BLOCK_SPECS` 动态生成 opcode 规格（为了 prompt caching 不放入易失值）
+- 指示 AI 在提到积木时使用 opcode 编写（UI 会自动转换为积木图像）
+- `blocksEnabled=false` 时在末尾添加禁止约束
 
-## Cloudflare Worker（試用モードプロキシ）
+## Cloudflare Worker（试用模式代理）
 
-- `/v1/chat/completions` と `/chat/completions` の両パスを受け付ける
-  - OpenAI SDK は `baseURL` に `/v1` なしで渡すと `/chat/completions` にリクエストを送る
-- Secret: `DEEPSEEK_API_KEY`（旧: `ANTHROPIC_API_KEY`）
-- 変更後は `cd worker && npx wrangler deploy` で再デプロイ必要
+- 接受 `/v1/chat/completions` 和 `/chat/completions` 两种路径
+  - OpenAI SDK 如果将 `/v1` 不带 `/v1` 传递给 `baseURL`，会向 `/chat/completions` 发送请求
+- Secret: `DEEPSEEK_API_KEY`（旧：`ANTHROPIC_API_KEY`）
+- 更改后需要 `cd worker && npx wrangler deploy` 重新部署
 
-## よくあるハマりポイント
+## 常见踩坑点
 
-### React `useCallback` の依存配列
-state を使うコールバックは依存配列に忘れずに追加する。`blocksEnabled` を追加し忘れるとトグルが効かない。依存配列の遅延を避けるために ref で二重持ちするのは禁止(state とズレてバグる)。`handleSend` は `blocksEnabled` を依存配列に入れて state を直読みし、一時的な無効化は `onSend(text, {forceBlocksDisabled})` のように引数で渡す。
+### React `useCallback` 的依赖数组
 
-### scratchblocks の日本語ロケール
-`loadLanguages` で登録しても、テキストがロケールファイルの文字列と完全一致しないと色が正しく割り当てられない。`ja.json` の値をそのまま使い、`%1` を `(10)` などに置き換える。
+使用 state 的回调记得添加到依赖数组中。如果忘记添加 `blocksEnabled` 会导致切换失效。禁止为了避免依赖数组延迟而用 ref 双重持有（会与 state 错位导致 bug）。`handleSend` 将 `blocksEnabled` 加入依赖数组直接读取 state，临时禁用通过 `onSend(text, {forceBlocksDisabled})` 传递参数。
 
-### ペン拡張のロード API
-- 正しい: `vm.extensionManager.isExtensionLoaded('pen')`
-- 誤り: `vm.runtime._extensions.isExtensionLoaded('pen')` → `_extensions` は存在しない
+### scratchblocks 的日语区域设置
+
+即使通过 `loadLanguages` 注册，如果文本与区域设置文件的字符串不完全一致，颜色也不会正确分配。原样使用 `ja.json` 的值，将 `%1` 替换为 `(10)` 等。
+
+### 画笔扩展的加载 API
+
+- 正确：`vm.extensionManager.isExtensionLoaded('pen')`
+- 错误：`vm.runtime._extensions.isExtensionLoaded('pen')` → `_extensions` 不存在
 
 ### CI（GitHub Actions）
-`actions/checkout`, `actions/setup-node`, `actions/configure-pages`, `actions/upload-pages-artifact`, `actions/deploy-pages` を Node.js 24 対応バージョンで保つ。
 
-## テスト・確認方法
+将 `actions/checkout`、`actions/setup-node`、`actions/configure-pages`、`actions/upload-pages-artifact`、`actions/deploy-pages` 保持在 Node.js 24 对应版本。
 
-ローカルで UI の動作確認には Chrome の DevTools Protocol を使うと便利:
+## 测试・确认方法
+
+本地确认 UI 动作使用 Chrome 的 DevTools Protocol 很方便：
 
 ```sh
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
@@ -110,10 +114,11 @@ state を使うコールバックは依存配列に忘れずに追加する。`b
   "http://localhost:8602/" &
 ```
 
-Python の websocket-client でページ操作・スクリーンショット取得が可能。ただしヘッドレス Chrome は WebGL 非対応のため Scratch のステージ描画は崩れる。ブロック画像（scratchblocks SVG）の確認は可能。
+可以用 Python 的 websocket-client 进行页面操作和截图。但无头 Chrome 不支持 WebGL 所以 Scratch 的舞台绘制会崩溃。积木图像（scratchblocks SVG）的确认是可能的。
 
-### 自動テスト（`npm test`）
-重いテストランナー（jest/vitest）は使わず、**esbuild でバンドル → node 実行**方式で統一している。
+### 自动测试（`npm test`）
 
-- ロジック: `test/block-builder.test.js`, `test/block-labels.test.js`, `test/static-checks.js`
-- React コンポーネント: `test/chat-panel-ui.test.js` を `tools/run-ui-test.mjs` 経由で実行（jsdom + `@testing-library/react`）。`scratchblocks`(UMD)と CSS はテストに不要なのでランナー内の esbuild plugin / 空ローダーで stub する。UI 挙動（折りたたみ等）のリグレッションはここに追加する。
+不使用重量级测试运行器（jest/vitest），统一使用 **esbuild 打包 → node 执行**方式。
+
+- 逻辑：`test/block-builder.test.js`、`test/block-labels.test.js`、`test/static-checks.js`
+- React 组件：通过 `tools/run-ui-test.mjs` 执行 `test/chat-panel-ui.test.js`（jsdom + `@testing-library/react`）。`scratchblocks`（UMD）和 CSS 对测试不需要，所以在运行器内的 esbuild plugin / 空加载器中做 stub。UI 动作（折叠等）的回归测试添加到此处。

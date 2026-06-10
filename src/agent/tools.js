@@ -1,5 +1,5 @@
-// Anthropic Messages API に渡すツール定義(input_schema)
-// 順序は固定(prompt caching のため変更しないこと)
+// 传递给 Anthropic Messages API 的工具定义(input_schema)
+// 顺序固定（因为 prompt caching，不要更改）
 
 const SCRIPTS_SCHEMA = {
     type: 'array',
@@ -15,8 +15,8 @@ const SCRIPTS_SCHEMA = {
     }
 };
 
-// blocksEnabled=false のとき除外するツール名の集合
-// (get_project_state / search_library / fetch_url は読み取り専用なので常に使用可)
+// blocksEnabled=false 时要排除的工具名集合
+//（get_project_state / search_library / fetch_url 是只读的，所以始终可用）
 export const BLOCK_TOOL_NAMES = new Set([
     'add_sprite',
     'delete_sprite',
@@ -169,7 +169,7 @@ export const TOOLS = [
     }
 ];
 
-// ツール入力の生成中(ストリーミング中)にUIへ出す進捗ラベル
+// 工具输入生成中（流式传输中）UI 显示的进度标签
 export const draftingLabel = (name, lang = 'ja') => {
     const ja = {
         set_scripts: 'ブロックを書いています',
@@ -187,12 +187,39 @@ export const draftingLabel = (name, lang = 'ja') => {
         fetch_url: 'Fetching the page',
         default: 'Preparing the next action'
     };
-    const table = lang === 'en' ? en : ja;
-    return table[name] || table.default;
+    const zh = {
+        set_scripts: '正在编写积木',
+        add_sprite: '正在选择角色',
+        search_library: '正在搜索库',
+        set_sprite_properties: '正在放置角色',
+        fetch_url: '正在获取页面',
+        default: '正在准备下一个操作'
+    };
+    if (lang === 'en') return en[name] || en.default;
+    if (lang === 'zh') return zh[name] || zh.default;
+    return ja[name] || ja.default;
 };
 
-// チャットUIに表示するツール実行サマリ
+// 在聊天 UI 显示的工具执行摘要
 export const summarizeToolCall = (name, input, lang = 'ja') => {
+    if (lang === 'zh') {
+        switch (name) {
+        case 'get_project_state': return '正在检查项目状态';
+        case 'search_library': return `库搜索: ${input.kind} "${input.query}"`;
+        case 'add_sprite': return `添加角色: ${input.name}`;
+        case 'delete_sprite': return `删除角色: ${input.target}`;
+        case 'rename_sprite': return `重命名: ${input.target} → ${input.new_name}`;
+        case 'add_costume': return `添加造型: ${input.costume_name} → ${input.target}`;
+        case 'add_sound': return `添加声音: ${input.sound_name} → ${input.target}`;
+        case 'add_backdrop': return `添加背景: ${input.backdrop_name}`;
+        case 'set_scripts': return `正在组装积木: ${input.target}`;
+        case 'set_sprite_properties': return `设置属性: ${input.target}`;
+        case 'start_project': return '运行项目';
+        case 'stop_project': return '停止项目';
+        case 'fetch_url': return `获取URL: ${input.url}`;
+        default: return name;
+        }
+    }
     if (lang === 'en') {
         switch (name) {
         case 'get_project_state': return 'Checking the project state';

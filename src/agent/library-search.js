@@ -1,11 +1,11 @@
-// Scratch標準ライブラリ(スプライト/コスチューム/音/背景)の検索
+// Scratch 标准库（角色/造型/声音/背景）的搜索
 import spriteLibrary from '@scratch/scratch-gui/sprites';
 import costumeLibrary from '@scratch/scratch-gui/costumes';
 import soundLibrary from '@scratch/scratch-gui/sounds';
 import backdropLibrary from '@scratch/scratch-gui/backdrops';
 
-// 日本語クエリ → 英語キーワードの変換辞書
-// (「検索は英語で」というプロンプト指示が守られなくても検索できるようにする)
+// 日语查询 → 英语关键词的转换字典
+//（即使"请用英语搜索"的提示未被遵守，也能进行搜索）
 const JA_TO_EN = {
     ネコ: 'cat', 猫: 'cat', ねこ: 'cat',
     イヌ: 'dog', 犬: 'dog', いぬ: 'dog',
@@ -96,11 +96,11 @@ const JA_TO_EN = {
     ゲームオーバー: 'lose'
 };
 
-// 日本語(非ASCII)クエリを英語キーワード候補に変換する
-// 完全一致 → 部分一致(クエリに辞書キーが含まれる)の順で探す
+// 将日语（非 ASCII）查询转换为英语关键词候选
+// 搜索顺序：完全匹配 → 部分匹配（查询包含字典键）
 export const translateQuery = query => {
     const q = String(query).trim();
-    if (!q || /^[\x20-\x7e]*$/.test(q)) return []; // ASCIIのみなら変換不要
+    if (!q || /^[\x20-\x7e]*$/.test(q)) return []; // 仅 ASCII 则无需转换
     if (JA_TO_EN[q]) return [JA_TO_EN[q]];
     const hits = [];
     for (const [ja, en] of Object.entries(JA_TO_EN)) {
@@ -115,7 +115,7 @@ const matches = (item, query) => {
     return (item.tags || []).some(tag => tag.toLowerCase().includes(q));
 };
 
-// 元クエリで0件なら日本語→英語変換した候補で再検索する
+//原始查询结果为0件时，用日语→英语转换后的候选重新搜索
 const searchWithFallback = (library, query, limit, toResult) => {
     const direct = library.filter(item => matches(item, query));
     if (direct.length > 0) return direct.slice(0, limit).map(toResult);

@@ -7,20 +7,20 @@ import {isDeepSeekModel, isOpenAIModel, isGeminiModel} from '../../agent/agent-l
 import {STRINGS, SUGGESTIONS_BY_LANG, draftingChars, pricingLabel} from '../../i18n';
 import './chat-panel.css';
 
-// 日本語ロケールを登録
+// 注册日语区域设置
 scratchblocks.loadLanguages({'ja': jaLocale, 'ja-Hira': jaHiraLocale});
 
-// Scratch の言語(ja|en)から scratchblocks に渡す languages を決定
+// 根据 Scratch 的语言(ja|en)决定传递给 scratchblocks 的 languages
 const getSbLanguages = lang => (lang === 'ja' ? ['ja', 'en'] : ['en']);
 
-// opcode を scratchblocks SVG に変換するコンポーネント
+// 将 opcode 转换为 scratchblocks SVG 的组件
 //
-// 検出パターンは「登録済み opcode(BLOCK_LABELS のキー)の完全一致リスト」から
-// 自動生成する。汎用の識別子パターン推測ではないため、登録済み opcode の
-// 取りこぼし(数字入り・複数アンダースコア等)が構造的に起きず、
-// opcode を追加すれば自動で検出対象になる。
-// 長いキー優先で並べ、前後が単語文字でないことを lookaround で保証する
-// (例: control_if_else の中の control_if に誤マッチしない)。
+// 检测模式从"已注册 opcode（BLOCK_LABELS 的键）的完全匹配列表"自动生成
+// 不是通用的标识符模式推测，因此已注册 opcode 的
+// 遗漏（带数字・多个下划线等）在结构上不会发生，
+// 添加 opcode 后自动成为检测对象。
+// 按较长键优先排列，用 lookaround 确保前后不是单词字符
+//（例如：不会误匹配 control_if_else 中的 control_if）。
 const OPCODE_RE = new RegExp(
     `(?<![A-Za-z0-9_])(${
         Object.keys(BLOCK_LABELS)
@@ -32,7 +32,7 @@ const OPCODE_RE = new RegExp(
 
 const BlockImage = ({opcode, keyStr, lang = 'ja'}) => {
     const ref = useRef(null);
-    // scratchblocks のロケールは ja のとき日本語、それ以外は英語ラベル
+    // scratchblocks 的区域设置在 ja 时为日语，其他为英语标签
     const sbLang = lang === 'ja' ? 'ja' : 'en';
     const label = getBlockLabel(opcode, sbLang);
 
@@ -44,7 +44,7 @@ const BlockImage = ({opcode, keyStr, lang = 'ja'}) => {
         ref.current.appendChild(svg);
     }, [label, lang]);
 
-    // フック呼び出しの後で early return する(Reactのフック順序を守る)
+    // 在钩子调用后 early return（遵守 React 的钩子顺序规则）
     if (!label) return <code key={keyStr}>{opcode}</code>;
 
     return (
@@ -56,13 +56,13 @@ const BlockImage = ({opcode, keyStr, lang = 'ja'}) => {
     );
 };
 
-// テキスト中の opcode を BlockImage に変換
-// 「ずっと」「10歩動かす」のようにカギ括弧で書かれた日本語ブロック名を
-// ブロック画像に変換する(opcodeで書かないモデルへのロジック側の救済)
+// 将文本中的 opcode 转换为 BlockImage
+// 将用引号包裹的日语区块名（如「ずっと」「10歩動かす」等）
+// 转换为区块图像（对不用 opcode 书的模型的逻辑侧补救）
 const JA_QUOTED_RE = /「([^「」]{2,40})」/g;
 
-// ブロック画像の直後に「(同じブロックの日本語名)」が続く場合は冗長なので読み飛ばす
-// 例: motion_movesteps(10歩動かす) → 画像のみ表示
+// 如果区块图像紧跟「(相同区块的日语名)」则冗余，跳过不显示
+// 例: motion_movesteps(10歩動かす) → 仅显示图像
 const PAREN_ANNOTATION_RE = /^\s*[（(]([^（）()]{1,50})[）)]/;
 const skipRedundantAnnotation = (text, pos, opcode) => {
     const m = text.slice(pos).match(PAREN_ANNOTATION_RE);
@@ -104,14 +104,14 @@ const renderWithBlocks = (text, keyPrefix, lang) => {
     return parts.length > 0 ? parts : [text];
 };
 
-// 行内マークダウン(**太字** と `コード`) + opcode ブロック画像 をReact要素に変換
+// 将行内标记（**粗体** 和 `代码`）+ opcode 区块图像转换为 React 元素
 const renderInline = (text, keyPrefix, lang) => {
     const parts = [];
     text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).forEach((seg, i) => {
         if (/^\*\*[^*]+\*\*$/.test(seg)) {
             parts.push(<strong key={`${keyPrefix}-${i}`}>{renderWithBlocks(seg.slice(2, -2), `${keyPrefix}-${i}`, lang)}</strong>);
         } else if (/^`[^`]+`$/.test(seg)) {
-            // バッククォート内は opcode として扱いブロック画像に変換
+            // 反引号内视为 opcode 并转换为区块图像
             const inner = seg.slice(1, -1);
             if (BLOCK_LABELS[inner]) {
                 parts.push(<BlockImage key={`${keyPrefix}-${i}`} opcode={inner} keyStr={`${keyPrefix}-${i}`} lang={lang} />);
@@ -125,15 +125,15 @@ const renderInline = (text, keyPrefix, lang) => {
     return parts;
 };
 
-// 行単位のブロック要素(見出し・リスト・区切り線・コードブロック)も処理するマークダウン描画
+// 处理行单位的区块元素（标题・列表・分隔线・代码块）的标记渲染
 const renderMarkdownLite = (text, lang) => {
-    // コードブロック(```...```)を先に分割し、その中はプレーンテキストとして扱う
+    // 先分割代码块(```...```)，其内部作为纯文本处理
     const segments = text.split(/(```[\s\S]*?```)/g);
     const result = [];
 
     segments.forEach((seg, segIdx) => {
         if (/^```[\s\S]*```$/.test(seg)) {
-            // フェンスと言語指定行を除いた中身をそのまま表示
+            // 去除围栏和语言指定行后直接显示内容
             const inner = seg.replace(/^```[^\n]*\n?/, '').replace(/```$/, '');
             result.push(
                 <pre key={`pre-${segIdx}`} style={{
@@ -190,7 +190,7 @@ const renderMarkdownLite = (text, lang) => {
     return result;
 };
 
-// ツール行(エラー時はクリックで詳細を開閉し、コピーできる)
+// 工具行（错误时点击可展开/收起详情，可复制）
 const ToolRow = ({message, lang = 'ja'}) => {
     const t = STRINGS[lang];
     const [expanded, setExpanded] = useState(false);
@@ -251,7 +251,7 @@ const MessageRow = ({message, lang = 'ja'}) => {
     );
 };
 
-// モデルのプロバイダごとの料金ページ(コスト概算は誤差が大きいため、公式料金表へのリンクを示す)
+// 各模型提供商的定价页面（成本概算误差大，因此提供官方定价表链接）
 const PRICING_PAGES = {
     anthropic: {label: 'Anthropic', url: 'https://docs.claude.com/en/docs/about-claude/pricing'},
     deepseek: {label: 'DeepSeek', url: 'https://api-docs.deepseek.com/quick_start/pricing'},
@@ -265,7 +265,7 @@ const pricingPageFor = model => {
     return PRICING_PAGES.anthropic;
 };
 
-// 応答待ちインジケータ(ツール入力の生成中はその進捗を表示)
+// 响应等待指示器（工具输入生成中显示其进度）
 const ThinkingRow = ({drafting, lang = 'ja'}) => (
     <div className="as-chat-message as-chat-tool">
         <span className="as-chat-tool-spinner" />
@@ -299,9 +299,9 @@ const ChatPanel = ({
     const canSend = hasApiKey || trialMode;
     const [input, setInput] = useState('');
     const historyRef = useRef(null);
-    const sentHistory = useRef([]);   // 送信済みテキストの履歴
-    const historyIndex = useRef(-1);  // -1 = 現在の入力、0以上 = 履歴参照中
-    const savedInput = useRef('');    // 履歴をたどる前の入力を退避
+    const sentHistory = useRef([]);   // 已发送文本的历史
+    const historyIndex = useRef(-1);  // -1 = 当前输入、0以上 = 历史参照中
+    const savedInput = useRef('');    // 暂存历史遍历前的输入
 
     useEffect(() => {
         const el = historyRef.current;
@@ -310,8 +310,8 @@ const ChatPanel = ({
         }
     }, [messages, running]);
 
-    // ストリーミング表示中・ツール実行中は「考え中...」を重ねて出さない
-    // (ただしツール入力の生成中(drafting)は進捗として常に表示)
+    // 流式显示中・工具执行中不叠加显示"思考中..."
+    //（但工具输入生成中（drafting）作为进度始终显示）
     const lastMessage = messages[messages.length - 1];
     const showThinking = running && (drafting || !(
         (lastMessage && lastMessage.role === 'assistant' && lastMessage.streaming) ||
@@ -325,8 +325,8 @@ const ChatPanel = ({
         historyIndex.current = -1;
         savedInput.current = '';
         setInput('');
-        // 送信した画面に表示されている値を明示的に渡し、親側の
-        // useCallback が古い state を閉じ込めていても状態がずれないようにする。
+        // 显式传递发送时画面显示的值，
+        // 即使父侧的 useCallback 捕获了旧的 state，状态也不会错位。
         onSend(text, {blocksEnabled});
     };
 
@@ -427,8 +427,8 @@ const ChatPanel = ({
                                 disabled={!canSend}
                                 onClick={() => {
                                     if (!canSend) return;
-                                    // UI表示を同期(state)しつつ、送信値は引数で確実に渡す
-                                    // (state更新は非同期なので onSend の引数で明示する)
+                                    // 同步 UI 显示（state）的同时，通过参数确保传递发送值
+                                    //（因为 state 更新是异步的，所以在 onSend 的参数中显式指定）
                                     if (s.disableBlocks && onSetBlocksEnabled) {
                                         onSetBlocksEnabled(false);
                                     }
