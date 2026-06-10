@@ -60,11 +60,11 @@ const App = () => {
     const [chatCollapsed, setChatCollapsed] = useState(false);
     const [projectKey, setProjectKey] = useState(0); // 用于重置聊天历史
     const lang = useScratchLang(vm);
-    const prevTargetCount = useRef(null);
+    const prevTargetIds = useRef(null);
     const isInitialized = useRef(false);
 
     // 检测项目切换并重置聊天历史
-    // 策略：当 targets 从非空变为空（新建空白项目），或 targets 身份完全改变时检测
+    // 策略：当 targets 的 ID 集合发生显著变化时（新项目会有完全不同的 ID）
     useEffect(() => {
         console.log('[projectChange] useEffect running, vm=', !!vm, 'vm.runtime=', !!(vm && vm.runtime));
         if (!vm || !vm.runtime) return;
@@ -75,6 +75,8 @@ const App = () => {
                 const count = targets.length;
                 // 获取所有 sprite 的 id（唯一标识）
                 const targetIds = targets.map(t => t.id).join(',');
+                // 获取所有 id 转为 Set 用于比较
+                const idSet = new Set(targets.map(t => t.id));
 
                 if (!isInitialized.current) {
                     // 首次检测（VM刚初始化），只标记已初始化，不记录prev值
@@ -83,16 +85,19 @@ const App = () => {
                     return;
                 }
 
-                console.log('[projectChange] tick: count=' + count, 'ids=', targetIds, 'prev=', prevTargetCount.current);
+                console.log('[projectChange] tick: count=' + count, 'ids=', targetIds);
 
-                // 如果 targets 从多个角色降到很少（<=2，包括新建空项目和新建带角色项目），认为是新建项目
-                // 条件：当前 count <= 2 且之前 count > 2
-                if (count <= 2 && prevTargetCount.current !== null && prevTargetCount.current > 2) {
-                    console.log('[projectChange] New project detected! count=' + count + ' prev=' + prevTargetCount.current);
-                    setProjectKey(k => k + 1);
+                // 如果之前的 IDs 存在，且当前 IDs 与之前没有任何重叠，认为是新项目
+                if (prevTargetIds.current !== null) {
+                    const prevIdSet = new Set(prevTargetIds.current.split(',').filter(Boolean));
+                    const hasOverlap = [...idSet].some(id => prevIdSet.has(id));
+                    if (!hasOverlap && idSet.size > 0) {
+                        console.log('[projectChange] New project detected! prev=', prevTargetIds.current, 'curr=', targetIds);
+                        setProjectKey(k => k + 1);
+                    }
                 }
-                // 记录 targets 数量
-                prevTargetCount.current = count;
+                // 记录 targets IDs
+                prevTargetIds.current = targetIds;
             } catch (_) { /* ignore */ }
         };
         checkProjectChange();
