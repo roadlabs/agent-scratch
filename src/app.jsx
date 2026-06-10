@@ -120,7 +120,10 @@ const App = () => {
             'Dinosaur': '恐龙',
             'Orange': '橙色',
             'Pink': '粉色',
-            'Purple': '紫色'
+            'Purple': '紫色',
+            'Original': '原始',
+            'Default': '默认',
+            'Cat Blocks': '猫咪积木'
         };
         const applyTranslations = () => {
             // 查找菜单项
