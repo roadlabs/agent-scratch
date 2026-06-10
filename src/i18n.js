@@ -112,7 +112,7 @@ export const STRINGS = {
         modalTitle: 'API 密钥 / 模型设置',
         modalModelLabel: '使用模型',
         modalCancel: '取消',
-        modalSave: '保存',
+        modalSave: '存储',
         keyStoredNote: '密钥仅保存在此浏览器的 localStorage 中。',
         anthropicDesc: '请输入 Anthropic API 密钥以使用 Claude。',
         deepseekDesc: '请输入 DeepSeek API 密钥。',
