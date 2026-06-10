@@ -95,7 +95,7 @@ export const STRINGS = {
         placeholderExample: '例如："让小猫在点击绿旗后一直向右移动"',
         inputPlaceholder: '输入指令...',
         send: '发送',
-        stop: '■ 停止',
+        stop: '■ 终止',
         thinking: '思考中...',
         toggleBlocks: '区块操作',
         toggleDisabledTitle: '试用模式下无法使用区块操作。从 ⚙️ 设置自己的 API 密钥即可使用',
