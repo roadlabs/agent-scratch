@@ -6,18 +6,6 @@ import {maybeRunSelfTest, maybeRunAgentTest} from './dev/self-test';
 import {localeToLang, STRINGS} from './i18n';
 import './app.css';
 
-// scratch-gui 菜单栏缺失的中文翻译（scratch-l10n暂无）
-const GUI_OVERRIDE_MESSAGES = {
-    'zh-cn': {
-        'gui.menuBar.settings': '设置',
-        'gui.menuBar.debug': '调试'
-    },
-    'zh-tw': {
-        'gui.menuBar.settings': '設置',
-        'gui.menuBar.debug': '調試'
-    }
-};
-
 // 以 Scratch 的语言(vm.getLocale())为单一真实来源，返回 'ja' | 'en' 的钩子。
 // 由于 VM 不发出 locale 变更事件，使用轻量轮询监控，
 // 仅在值变化时更新 state（避免不必要的重渲染）。
@@ -100,18 +88,7 @@ const App = () => {
         return () => clearInterval(id);
     }, [vm]);
     const handleVmInit = useCallback(newVm => {
-        // 在 GUI 调用 setLocale 之前，先包装它以注入我们的覆盖消息
-        const originalSetLocale = newVm.setLocale.bind(newVm);
-        newVm.setLocale = (locale, messages) => {
-            // 将 locale 转为小写以匹配 GUI_OVERRIDE_MESSAGES 的 key
-            const overrideKey = locale ? locale.toLowerCase() : null;
-            const override = overrideKey ? GUI_OVERRIDE_MESSAGES[overrideKey] : null;
-            // 合并覆盖消息与 GUI 传入的消息
-            const mergedMessages = override ? {...messages, ...override} : messages;
-            return originalSetLocale(locale, mergedMessages);
-        };
-
-        window.vm = newVm; // 调试用
+        window.vm = newVm;
         setVm(newVm);
         maybeRunSelfTest(newVm);
         maybeRunAgentTest(newVm);
@@ -125,6 +102,36 @@ const App = () => {
         const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
         return () => clearTimeout(t);
     }, [chatCollapsed]);
+
+    // scratch-gui 菜单栏缺失的中文翻译，通过 DOM 操作注入
+    //（scratch-l10n 暂无这些 key 的中文翻译，react-intl 无法通过 setLocale 覆盖）
+    useEffect(() => {
+        if (lang !== 'zh') return;
+        const applyTranslations = () => {
+            // 查找设置菜单（file 菜单下或设置按钮）
+            const menuItems = document.querySelectorAll('[role="menuitem"]');
+            menuItems.forEach(item => {
+                const text = item.textContent.trim();
+                if (text === 'Settings') item.textContent = '设置';
+                if (text === 'Debug') item.textContent = '调试';
+            });
+            // 备用：直接搜索包含特定文本的 DOM 节点
+            const allSpans = document.querySelectorAll('span');
+            allSpans.forEach(span => {
+                if (span.textContent === 'Settings') span.textContent = '设置';
+                if (span.textContent === 'Debug') span.textContent = '调试';
+            });
+        };
+        // 延迟执行，等待菜单渲染
+        const timer = setTimeout(applyTranslations, 1000);
+        // 也监听 DOM 变化以应对动态渲染的菜单
+        const observer = new MutationObserver(applyTranslations);
+        observer.observe(document.body, {childList: true, subtree: true});
+        return () => {
+            clearTimeout(timer);
+            observer.disconnect();
+        };
+    }, [lang]);
 
     return (
         <div className="as-app">
