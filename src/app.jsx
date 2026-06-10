@@ -101,17 +101,15 @@ const App = () => {
     }, [vm]);
     const handleVmInit = useCallback(newVm => {
         // 在 GUI 调用 setLocale 之前，先包装它以注入我们的覆盖消息
-        const vmLocale = newVm.getLocale ? newVm.getLocale() : null;
-        // 将 locale 转为小写以匹配 GUI_OVERRIDE_MESSAGES 的 key
-        const overrideKey = vmLocale ? vmLocale.toLowerCase() : null;
-        if (overrideKey && GUI_OVERRIDE_MESSAGES[overrideKey]) {
-            const originalSetLocale = newVm.setLocale.bind(newVm);
-            newVm.setLocale = (locale, messages) => {
-                // 合并我们的覆盖消息与 GUI 传入的消息
-                const mergedMessages = {...messages, ...GUI_OVERRIDE_MESSAGES[overrideKey]};
-                return originalSetLocale(locale, mergedMessages);
-            };
-        }
+        const originalSetLocale = newVm.setLocale.bind(newVm);
+        newVm.setLocale = (locale, messages) => {
+            // 将 locale 转为小写以匹配 GUI_OVERRIDE_MESSAGES 的 key
+            const overrideKey = locale ? locale.toLowerCase() : null;
+            const override = overrideKey ? GUI_OVERRIDE_MESSAGES[overrideKey] : null;
+            // 合并覆盖消息与 GUI 传入的消息
+            const mergedMessages = override ? {...messages, ...override} : messages;
+            return originalSetLocale(locale, mergedMessages);
+        };
 
         window.vm = newVm; // 调试用
         setVm(newVm);
