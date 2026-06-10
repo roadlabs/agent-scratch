@@ -3,20 +3,26 @@ import {isDeepSeekModel, isOpenAIModel, isGeminiModel} from '../../agent/agent-l
 import {STRINGS} from '../../i18n';
 import './api-key-modal.css';
 
-// label 是模型名 + 语言别的补充注释({ja, en})
+// label 是模型名 + 语言别的补充注释({ja, en, zh})
 const MODELS = [
-    {id: 'deepseek-chat', name: 'DeepSeek V3', note: {ja: '(低コスト・高性能) ★推奨', en: '(low cost, high performance) ★recommended'}, provider: 'deepseek'},
-    {id: 'deepseek-reasoner', name: 'DeepSeek R1', note: {ja: '(推論特化)', en: '(reasoning-focused)'}, provider: 'deepseek'},
-    {id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', note: {ja: '(最速・最安)', en: '(fastest, cheapest)'}, provider: 'anthropic'},
-    {id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', note: {ja: '(バランス型)', en: '(balanced)'}, provider: 'anthropic'},
-    {id: 'claude-opus-4-8', name: 'Claude Opus 4.8', note: {ja: '(最高性能・高コスト)', en: '(top performance, high cost)'}, provider: 'anthropic'},
-    {id: 'gpt-5.1', name: 'GPT-5.1', note: {ja: '(高性能)', en: '(high performance)'}, provider: 'openai'},
-    {id: 'gpt-5-mini', name: 'GPT-5 mini', note: {ja: '(低コスト)', en: '(low cost)'}, provider: 'openai'},
-    {id: 'gpt-5-nano', name: 'GPT-5 nano', note: {ja: '(最速・最安)', en: '(fastest, cheapest)'}, provider: 'openai'},
-    {id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', note: {ja: '(高性能)', en: '(high performance)'}, provider: 'gemini'},
-    {id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', note: {ja: '(バランス型)', en: '(balanced)'}, provider: 'gemini'},
-    {id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', note: {ja: '(最速・最安)', en: '(fastest, cheapest)'}, provider: 'gemini'}
+    {id: 'deepseek-chat', name: 'DeepSeek V3', note: {ja: '(低コスト・高性能) ★推奨', en: '(low cost, high performance) ★recommended', zh: '(低成本・高性能) ★推荐'}, provider: 'deepseek'},
+    {id: 'deepseek-reasoner', name: 'DeepSeek R1', note: {ja: '(推論特化)', en: '(reasoning-focused)', zh: '(推理专用)'}, provider: 'deepseek'},
+    {id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', note: {ja: '(最速・最安)', en: '(fastest, cheapest)', zh: '(最快・最便宜)'}, provider: 'anthropic'},
+    {id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', note: {ja: '(バランス型)', en: '(balanced)', zh: '(均衡型)'}, provider: 'anthropic'},
+    {id: 'claude-opus-4-8', name: 'Claude Opus 4.8', note: {ja: '(最高性能・高コスト)', en: '(top performance, high cost)', zh: '(最高性能・高成本)'}, provider: 'anthropic'},
+    {id: 'gpt-5.1', name: 'GPT-5.1', note: {ja: '(高性能)', en: '(high performance)', zh: '(高性能)'}, provider: 'openai'},
+    {id: 'gpt-5-mini', name: 'GPT-5 mini', note: {ja: '(低コスト)', en: '(low cost)', zh: '(低成本)'}, provider: 'openai'},
+    {id: 'gpt-5-nano', name: 'GPT-5 nano', note: {ja: '(最速・最安)', en: '(fastest, cheapest)', zh: '(最快・最便宜)'}, provider: 'openai'},
+    {id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', note: {ja: '(高性能)', en: '(high performance)', zh: '(高性能)'}, provider: 'gemini'},
+    {id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', note: {ja: '(バランス型)', en: '(balanced)', zh: '(均衡型)'}, provider: 'gemini'},
+    {id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', note: {ja: '(最速・最安)', en: '(fastest, cheapest)', zh: '(最快・最便宜)'}, provider: 'gemini'}
 ];
+
+const OPTGROUP_LABELS = {
+    ja: {deepseek: 'DeepSeek', anthropic: 'Anthropic (Claude)', openai: 'OpenAI (GPT)', gemini: 'Google (Gemini)'},
+    en: {deepseek: 'DeepSeek', anthropic: 'Anthropic (Claude)', openai: 'OpenAI (GPT)', gemini: 'Google (Gemini)'},
+    zh: {deepseek: 'DeepSeek', anthropic: 'Anthropic (Claude)', openai: 'OpenAI (GPT)', gemini: 'Google (Gemini)'}
+};
 
 const modelLabel = (m, lang) => `${m.name}${m.note[lang] || m.note.ja}`;
 
@@ -52,22 +58,22 @@ const ApiKeyModal = ({lang = 'ja', initialApiKey, initialDeepSeekApiKey, initial
                             value={model}
                             onChange={e => setModelValue(e.target.value)}
                         >
-                            <optgroup label="DeepSeek">
+                            <optgroup label={OPTGROUP_LABELS[lang].deepseek}>
                                 {MODELS.filter(m => m.provider === 'deepseek').map(m => (
                                     <option key={m.id} value={m.id}>{modelLabel(m, lang)}</option>
                                 ))}
                             </optgroup>
-                            <optgroup label="Anthropic (Claude)">
+                            <optgroup label={OPTGROUP_LABELS[lang].anthropic}>
                                 {MODELS.filter(m => m.provider === 'anthropic').map(m => (
                                     <option key={m.id} value={m.id}>{modelLabel(m, lang)}</option>
                                 ))}
                             </optgroup>
-                            <optgroup label="OpenAI (GPT)">
+                            <optgroup label={OPTGROUP_LABELS[lang].openai}>
                                 {MODELS.filter(m => m.provider === 'openai').map(m => (
                                     <option key={m.id} value={m.id}>{modelLabel(m, lang)}</option>
                                 ))}
                             </optgroup>
-                            <optgroup label="Google (Gemini)">
+                            <optgroup label={OPTGROUP_LABELS[lang].gemini}>
                                 {MODELS.filter(m => m.provider === 'gemini').map(m => (
                                     <option key={m.id} value={m.id}>{modelLabel(m, lang)}</option>
                                 ))}
