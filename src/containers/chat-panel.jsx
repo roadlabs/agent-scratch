@@ -35,6 +35,7 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
             console.log('[ChatPanel] Clearing messages, current count=', messages.length);
             setMessages([]);
             apiMessagesRef.current = [];
+            console.log('[ChatPanel] After clear, messages should be empty');
         }
     }, [projectKey]);
     const abortRef = useRef(null);
