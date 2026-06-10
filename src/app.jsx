@@ -60,17 +60,33 @@ const App = () => {
     const [chatCollapsed, setChatCollapsed] = useState(false);
     const [projectKey, setProjectKey] = useState(0); // 用于重置聊天历史
     const lang = useScratchLang(vm);
-    const prevProjectId = useRef(null);
+    const prevTargetCount = useRef(null);
+    const isInitialized = useRef(false);
 
     // 检测项目切换并重置聊天历史
+    // 策略：当 targets数量恢复到默认值2（stage + cat）时，认为是新建了项目
     useEffect(() => {
-        if (!vm) return;
+        if (!vm || !vm.runtime) return;
+
         const checkProjectChange = () => {
             try {
-                const pid = vm.getProjectId ? vm.getProjectId() : null;
-                if (pid !== null && pid !== prevProjectId.current) {
-                    prevProjectId.current = pid;
+                const targets = vm.runtime.targets || [];
+                const count = targets.length;
+
+                if (!isInitialized.current) {
+                    // 首次检测（VM刚初始化），只标记已初始化，不记录prev值
+                    isInitialized.current = true;
+                    return;
+                }
+
+                // 如果 targets 数量恢复到默认值 2（新建项目默认状态），
+                // 且之前记录过不同的值，则认为是新建项目
+                if (count === 2 && prevTargetCount.current !== null && prevTargetCount.current !== 2) {
                     setProjectKey(k => k + 1);
+                }
+                // 只有当数量不是默认值2时才记录（避免初始状态的2被当作"上一个状态"）
+                if (count !== 2) {
+                    prevTargetCount.current = count;
                 }
             } catch (_) { /* ignore */ }
         };
