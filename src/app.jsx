@@ -126,6 +126,7 @@ const App = () => {
         return () => clearTimeout(t);
     }, [chatCollapsed]);
 
+    console.log('[App] rendering, vm=', !!vm);
     return (
         <div className="as-app">
             <div className="as-gui-wrapper">
