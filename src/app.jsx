@@ -80,11 +80,11 @@ const App = () => {
                 }
 
                 // 如果 targets 数量恢复到默认值 2（新建项目默认状态），
-                // 且之前记录过不同的值，则认为是新建项目
-                if (count === 2 && prevTargetCount.current !== null && prevTargetCount.current !== 2) {
+                // 且之前有记录过不同的值，则认为是新建项目
+                if (count === 2 && prevTargetCount.current !== null) {
                     setProjectKey(k => k + 1);
                 }
-                // 只有当数量不是默认值2时才记录（避免初始状态的2被当作"上一个状态"）
+                // 记录 targets数量（只要不是初始的默认值2就记录）
                 if (count !== 2) {
                     prevTargetCount.current = count;
                 }
