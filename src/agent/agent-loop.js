@@ -10,7 +10,7 @@ export class AuthError extends Error {}
 // 试用模式：未输入密钥时使用的代理 URL（构建时注入。空则无效）
 const TRIAL_PROXY_URL = process.env.TRIAL_PROXY_URL;
 
-const TRIAL_TOKEN_KEY = 'agent-scratch-trial-token';
+const TRIAL_TOKEN_KEY = 'vibecat-trial-token';
 
 // 从 URL 参数 ?p=xxx 读取令牌并保存到 localStorage（启动时调用）
 export const initTrialToken = () => {
@@ -30,10 +30,10 @@ export const getTrialToken = () => localStorage.getItem(TRIAL_TOKEN_KEY) || '';
 // 仅在 TRIAL_PROXY_URL 已设置且令牌已保存时启用试用模式
 export const isTrialAvailable = () => Boolean(TRIAL_PROXY_URL && getTrialToken());
 
-const MODEL_STORAGE_KEY = 'agent-scratch-model';
-const DEEPSEEK_API_KEY_STORAGE_KEY = 'agent-scratch-deepseek-api-key';
-const OPENAI_API_KEY_STORAGE_KEY = 'agent-scratch-openai-api-key';
-const GEMINI_API_KEY_STORAGE_KEY = 'agent-scratch-gemini-api-key';
+const MODEL_STORAGE_KEY = 'vibecat-model';
+const DEEPSEEK_API_KEY_STORAGE_KEY = 'vibecat-deepseek-api-key';
+const OPENAI_API_KEY_STORAGE_KEY = 'vibecat-openai-api-key';
+const GEMINI_API_KEY_STORAGE_KEY = 'vibecat-gemini-api-key';
 
 // 本地开发用密钥（从 .env 经 webpack DefinePlugin 注入。未设置则为空字符串）
 export const DEV_ANTHROPIC_KEY = process.env.DEV_ANTHROPIC_API_KEY || '';

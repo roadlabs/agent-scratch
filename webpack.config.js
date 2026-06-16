@@ -12,7 +12,7 @@ module.exports = (env, argv) => ({
     entry: './src/index.jsx',
     output: {
         path: path.resolve(__dirname, 'build'),
-        filename: 'agent-scratch.js',
+        filename: 'vibecat.js',
         publicPath: ''
     },
     devtool: argv.mode === 'production' ? false : 'cheap-module-source-map',
@@ -79,7 +79,7 @@ module.exports = (env, argv) => ({
         }),
         new HtmlWebpackPlugin({
             template: 'src/index.html',
-            title: 'Agent Scratch'
+            title: 'VibeCat'
         }),
         // scratch-gui の prebuilt dist が実行時に読み込むチャンク・静的アセットを
         // 出力ディレクトリへコピーする(publicPath 相対で解決される)

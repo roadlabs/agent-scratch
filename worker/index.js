@@ -1,4 +1,4 @@
-// agent-scratch 試用モード用の DeepSeek API プロキシ (Cloudflare Worker)
+// vibecat 試用モード用の DeepSeek API プロキシ (Cloudflare Worker)
 //
 // APIキーは Worker の Secret (DEEPSEEK_API_KEY) に保持し、クライアントには渡さない。
 // デプロイ:
@@ -92,7 +92,7 @@ export default {
             }
             const fetchText = async (fetchUrl) => {
                 const upstream = await fetch(fetchUrl, {
-                    headers: {'User-Agent': 'Mozilla/5.0 (compatible; agent-scratch-bot/1.0)'},
+                    headers: {'User-Agent': 'Mozilla/5.0 (compatible; vibecat-bot/1.0)'},
                     redirect: 'follow'
                 });
                 if (!upstream.ok) return {ok: false, status: upstream.status};

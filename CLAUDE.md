@@ -1,4 +1,4 @@
-# Agent Scratch 开发指南
+# VibeCat 开发指南
 
 ## 项目概述
 

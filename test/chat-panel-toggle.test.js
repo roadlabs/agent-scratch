@@ -14,7 +14,7 @@ global.navigator = dom.window.navigator;
 global.localStorage = dom.window.localStorage;
 global.IS_REACT_ACT_ENVIRONMENT = true;
 // 初回説明ダイアログは既読にしておく(トグル/送信操作の邪魔をしないため)
-global.localStorage.setItem('agent-scratch-disclosure-accepted', '1');
+global.localStorage.setItem('vibecat-disclosure-accepted', '1');
 
 const React = require('react');
 const {render, fireEvent, cleanup, act} = require('@testing-library/react');

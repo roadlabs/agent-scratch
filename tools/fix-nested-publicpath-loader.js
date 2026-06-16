@@ -1,6 +1,6 @@
 // @scratch/scratch-gui の dist にネストされた webpack ランタイム(scratch-storage の
 // fetch-worker ローダ)は publicPath が "/" にハードコードされており、サブパス配信
-// (GitHub Pages の /agent-scratch/ など)では /chunks/fetch-worker...js が 404 になって
+// (GitHub Pages の /vibecat/ など)では /chunks/fetch-worker...js が 404 になって
 // アセット読み込みが永久に固まる。
 // これをページのベースURL由来の publicPath に置き換える webpack ローダ。
 module.exports = function fixNestedPublicPath(source) {

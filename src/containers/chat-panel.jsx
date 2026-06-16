@@ -5,8 +5,8 @@ import DisclosureModal from '../components/disclosure-modal/disclosure-modal.jsx
 import {runAgent, AuthError, getModel, setModel, isTrialAvailable, getDeepSeekApiKey, setDeepSeekApiKey, isDeepSeekModel, getOpenAIApiKey, setOpenAIApiKey, isOpenAIModel, getGeminiApiKey, setGeminiApiKey, isGeminiModel, DEV_ANTHROPIC_KEY} from '../agent/agent-loop';
 import {STRINGS, errorPrefix} from '../i18n';
 
-const STORAGE_KEY = 'agent-scratch-api-key';
-const DISCLOSURE_STORAGE_KEY = 'agent-scratch-disclosure-accepted';
+const STORAGE_KEY = 'vibecat-api-key';
+const DISCLOSURE_STORAGE_KEY = 'vibecat-disclosure-accepted';
 
 const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) => {
     const t = STRINGS[lang];

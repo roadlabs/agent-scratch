@@ -13,7 +13,7 @@ const WORKER_BASE_URL = (() => {
     return raw.replace(/\/(v1\/)?chat\/completions$/, '').replace(/\/$/, '');
 })();
 
-const TRIAL_TOKEN_KEY = 'agent-scratch-trial-token';
+const TRIAL_TOKEN_KEY = 'vibecat-trial-token';
 const getTrialToken = () => localStorage.getItem(TRIAL_TOKEN_KEY) || '';
 
 // 直接 fetch 的获取上限（防止上下文溢出）

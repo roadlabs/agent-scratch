@@ -1,10 +1,10 @@
-# Agent Scratch
+# VibeCat
 
 根据自然语言指示自动组装 Scratch 积木的、内置 AI 代理的 Scratch mod。
 
 在编辑器右侧的提示框中输入"让小猫在点击绿旗后一直向右移动"这样的日语（现在也支持中文和英语）指示，Claude 就会通过 agent 方式（tool use 循环）添加角色、组装积木、添加声音和背景，可以亲眼看到积木在编辑器上逐渐组装的过程。
 
-![agent-scratch 演示：提示后积木自动组装](images/agent-scratch.gif)
+![vibecat 演示：提示后积木自动组装](images/agent-scratch.gif)
 
 作为 [live-scratch](https://github.com/champierre/live-scratch)（让外部 AI 代理编辑 project.json 的方式）的发展版本，将代理直接嵌入到编辑器中。
 
@@ -55,7 +55,7 @@ npx wrangler deploy                          # 首次需要登录 Cloudflare
 npx wrangler secret put ANTHROPIC_API_KEY    # 建议使用有支出上限的专用密钥
 ```
 
-部署时显示的 URL（例如：`https://agent-scratch-proxy.<account>.workers.dev`）在 GitHub 仓库的 **Settings → Secrets and variables → Actions → Variables** 中注册为 `TRIAL_PROXY_URL`，重新执行 Actions 后生效。
+部署时显示的 URL（例如：`https://vibecat-proxy.<account>.workers.dev`）在 GitHub 仓库的 **Settings → Secrets and variables → Actions → Variables** 中注册为 `TRIAL_PROXY_URL`，重新执行 Actions 后生效。
 
 - 为了不暴露密钥，Anthropic 的密钥保存在 **Cloudflare 的 Secret** 中（注册到 GitHub 的只有公开也没问题的代理 URL）
 - Worker 仅转发来自允许源（`worker/wrangler.toml` 的 `ALLOWED_ORIGINS`）的 `/v1/messages`，并限制模型和 max_tokens

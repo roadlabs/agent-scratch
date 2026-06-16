@@ -1,4 +1,4 @@
-# Agent Scratch
+# VibeCat
 
 > 中文版说明文档：[README.zh.md](README.zh.md)
 
@@ -6,7 +6,7 @@
 
 エディタ右側のプロンプト欄に「ネコが旗をクリックしたら右に動き続けるようにして」のように日本語で指示すると、Claude がエージェンティックに(tool use ループで)スプライトの追加・ブロックの組み立て・音や背景の追加を行い、ブロックが順に組み上がっていく様子をエディタ上で見ることができます。
 
-![agent-scratch のデモ: プロンプトで指示するとブロックが自動で組み上がっていく](images/agent-scratch.gif)
+![vibecat のデモ: プロンプトで指示するとブロックが自動で組み上がっていく](images/agent-scratch.gif)
 
 [live-scratch](https://github.com/champierre/live-scratch)(project.json を外部AIエージェントに編集させる方式)の発展形として、エージェントをエディタ自体に組み込んだものです。
 
@@ -57,7 +57,7 @@ npx wrangler deploy                          # 初回は Cloudflare ログイン
 npx wrangler secret put ANTHROPIC_API_KEY    # 支出上限付きの専用キーを推奨
 ```
 
-デプロイで表示された URL(例: `https://agent-scratch-proxy.<account>.workers.dev`)を、GitHub リポジトリの **Settings → Secrets and variables → Actions → Variables** に `TRIAL_PROXY_URL` として登録し、Actions を再実行すると有効になります。
+デプロイで表示された URL(例: `https://vibecat-proxy.<account>.workers.dev`)を、GitHub リポジトリの **Settings → Secrets and variables → Actions → Variables** に `TRIAL_PROXY_URL` として登録し、Actions を再実行すると有効になります。
 
 - キーが露出しないよう、Anthropic のキーは **Cloudflare の Secret** に保存します(GitHub 側に登録するのは公開しても問題ないプロキシURLのみ)
 - Worker は許可オリジン(`worker/wrangler.toml` の `ALLOWED_ORIGINS`)からの `/v1/messages` だけを中継し、モデルと max_tokens を制限します
