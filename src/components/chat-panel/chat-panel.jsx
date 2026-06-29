@@ -288,6 +288,8 @@ const ChatPanel = ({
     trialMode,
     currentModel,
     blocksEnabled,
+    mode = 'programmer',
+    onSetMode,
     onSend,
     onStop,
     onOpenSettings,
@@ -362,6 +364,24 @@ const ChatPanel = ({
                     onClick={onToggleCollapse}
                 >▶</button>
                 <span className="as-chat-title">{t.headerTitle}</span>
+                {onSetMode && (
+                    <div className="as-chat-mode-group" role="group" aria-label="agent mode">
+                        <button
+                            type="button"
+                            className={`as-chat-mode-btn${mode === 'programmer' ? ' active' : ''}`}
+                            title={t.modeProgramHint}
+                            disabled={running}
+                            onClick={() => onSetMode('programmer')}
+                        >{t.modeProgram}</button>
+                        <button
+                            type="button"
+                            className={`as-chat-mode-btn${mode === 'actor' ? ' active' : ''}`}
+                            title={t.modeActorHint}
+                            disabled={running}
+                            onClick={() => onSetMode('actor')}
+                        >{t.modeActor}</button>
+                    </div>
+                )}
                 <button
                     className="as-chat-settings-button"
                     title={t.settings}
@@ -397,18 +417,20 @@ const ChatPanel = ({
                         {t.noKey}
                     </div>
                 )}
-                <div
-                    className="as-chat-toggle-row"
-                    title={trialMode ? t.toggleDisabledTitle : undefined}
-                >
-                    <span className="as-chat-toggle-desc">{t.toggleBlocks}</span>
-                    <span
-                        className={`as-chat-toggle-switch${!trialMode && blocksEnabled ? ' as-chat-toggle-on' : ''}${trialMode ? ' as-chat-toggle-disabled' : ''}`}
-                        onClick={trialMode ? undefined : onToggleBlocks}
+                {mode === 'programmer' && (
+                    <div
+                        className="as-chat-toggle-row"
+                        title={trialMode ? t.toggleDisabledTitle : undefined}
                     >
-                        <span className="as-chat-toggle-knob" />
-                    </span>
-                </div>
+                        <span className="as-chat-toggle-desc">{t.toggleBlocks}</span>
+                        <span
+                            className={`as-chat-toggle-switch${!trialMode && blocksEnabled ? ' as-chat-toggle-on' : ''}${trialMode ? ' as-chat-toggle-disabled' : ''}`}
+                            onClick={trialMode ? undefined : onToggleBlocks}
+                        >
+                            <span className="as-chat-toggle-knob" />
+                        </span>
+                    </div>
+                )}
                 <textarea
                     className="as-chat-input"
                     value={input}

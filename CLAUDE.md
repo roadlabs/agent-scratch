@@ -42,11 +42,28 @@ AI 的行为如果只依赖系统提示词的指示会留下随机性。**能强
 
 ## 架构
 
+### Agent 模式：Programmer 与 Actor 两种范式
+
+VibeCat 提供两种 agent 范式，通过 chat panel header 的「Program / Actor」芯片切换：
+
+- **Programmer 模式（默认）**：`set_scripts` DSL 创作 Scratch 积木脚本，由用户按绿旗执行。工具集定义在 `src/agent/tools.js`，处理器在 `src/agent/tool-handlers.js`。这是 VibeCat 最初始的设计。
+- **Actor 模式（Runtime Actor）**：LLM 作为运行时驱动者，通过原子动作（`actor_move` / `actor_set_position` / `actor_say` 等）连续观察 VM 状态、决策、执行。每次写入动作的 handler 强制回显 post-state（`{ok, action, target, state}`），形成 closed feedback loop。工具集定义在 `src/agent/runtime-tools.js`，处理器在 `src/agent/runtime-handlers.js`，独立的 agent 循环在 `src/agent/actor-loop.js`。
+
+模式分发在 `runAgent` 入口：`runAgent({mode='programmer'|'actor', ...})`。两种模式共享 `apiMessagesRef`（Anthropic 格式对话历史），切换时往历史中注入一行 user-content 系统提醒（`modeSwitchToActor` / `modeSwitchToProgrammer`），避免 LLM 沿用旧模式思路。
+
+**Actor 模式的关键设计**（遵循"用逻辑确保可靠"）：
+
+- **写入即回显**：每个写入动作的 handler 返回 `{ok, action, target, state}`，`state` 是受影响 sprite 的 post-snapshot（位置/方向/コスチューム/吹き出し等）。LLM 不可能基于陈旧记忆决策 —— closed feedback loop 由 handler 返回值强制，而非提示词请求。
+- **actor_ 前缀隔离命名空间**：与程序员模式的工具集（`set_scripts` 等）完全独立，避免碰撞。actor 工具列表里没有 `set_scripts`，强化"actor 不创作积木脚本"的边界。
+- **三重防御 actor 不创作积木**：(1) 工具列表里没有 `set_scripts` (2) 系统提示词中明确禁止 (3) `actor_` 处理器只调用运行时方法（`setXY` / `say` 等），不接触 `t.blocks`。
+- **资产/克隆/执行控制**共用 `createToolHandlers` 的逻辑（通过 `createToolHandlers(vm, {blocksEnabled: false})` 复用，actor 模式下 set_scripts 等被排除）。返回结果附 `state` 字段回显全目标列表，让 LLM 看到变更后的世界。
+- **actor 模式强制 `blocksEnabled=false`**（即使 UI 切换了 toggle，handler 端也拒绝积木操作）。
+
 ### 多语言支持 (`src/i18n.js`)
 
 - **UI 和 AI 响应的语言跟随 Scratch 的语言（`vm.getLocale()`）**。`localeToLang()` 将日语系（`ja` / `ja-Hira`）→ `'ja'`、中文系（`zh*`）→ `'zh'`、其他 → `'en'`。判断的单一真实来源是 `vm.getLocale()`，`app.jsx` 的 `useScratchLang` 通过轮询分发 `lang`（因为 VM 不发出 locale 更改事件）。
-- **修改或添加 UI 文案时，必须同时更新日英两种语言（`STRINGS.ja` 和 `STRINGS.en`，现在还有 `STRINGS.zh`）**。只添加一种会导致英语 UI 中混入日语/出现 `undefined`。`test/i18n.test.js` 验证两种语言的键集合一致，所以不要在 JSX 中硬编码日语，而是一定要通过 `STRINGS[lang]` 获取。工具进度标签（`tools.js` 的 `draftingLabel`/`summarizeToolCall`）、系统提示词（`system-prompt.js` 的 `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`/`SYSTEM_PROMPT_ZH`）、错误消息（`agent-loop.js`）同样要准备多种语言版本。
-- **AI 响应语言不靠提示词请求，而是通过 `lang` 替换系统提示词本身来保证**（"用逻辑确保可靠"）。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)`。
+- **修改或添加 UI 文案时，必须同时更新日英两种语言（`STRINGS.ja` 和 `STRINGS.en`，现在还有 `STRINGS.zh`）**。只添加一种会导致英语 UI 中混入日语/出现 `undefined`。`test/i18n.test.js` 验证两种语言的键集合一致，所以不要在 JSX 中硬编码日语，而是一定要通过 `STRINGS[lang]` 获取。工具进度标签（`tools.js` 的 `draftingLabel`/`summarizeToolCall`、`runtime-tools.js` 的 `runtimeDraftingLabel`/`summarizeActorToolCall`）、系统提示词（`system-prompt.js` 的 `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`/`SYSTEM_PROMPT_ZH`、`runtime-system-prompt.js` 的 actor prompt）、错误消息（`agent-loop.js`）同样要准备多种语言版本。
+- **AI 响应语言不靠提示词请求，而是通过 `lang` 替换系统提示词本身来保证**（"用逻辑确保可靠"）。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)` / `getRuntimeActorSystemPrompt(lang)`。
 
 ### scratch-gui 菜单栏翻译
 

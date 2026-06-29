@@ -7,6 +7,7 @@ import {STRINGS, errorPrefix} from '../i18n';
 
 const STORAGE_KEY = 'vibecat-api-key';
 const DISCLOSURE_STORAGE_KEY = 'vibecat-disclosure-accepted';
+const MODE_STORAGE_KEY = 'vibecat-mode';
 
 const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) => {
     const t = STRINGS[lang];
@@ -24,9 +25,16 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
     // 工具输入生成中的进度显示("正在编写区块 (1200字符)" 等)
     const [drafting, setDrafting] = useState(null);
     const [currentModel, setCurrentModel] = useState(() => getModel());
+    // Agent 模式：'programmer' (set_scripts DSL) 或 'actor' (runtime primitives)
+    const [mode, setMode] = useState(() => {
+        const stored = localStorage.getItem(MODE_STORAGE_KEY);
+        return stored === 'actor' ? 'actor' : 'programmer';
+    });
 
     // Anthropic API 格式的对话历史（支持多轮）
     const apiMessagesRef = useRef([]);
+    // 用于检测模式切换：切换时往 apiMessages 注入一行 user 提示，避免 LLM 沿用旧模式思路
+    const prevModeRef = useRef(mode);
 
     // 项目切换时清空聊天历史
     useEffect(() => {
@@ -92,8 +100,11 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
         }
         //正常发送时显式传递子组件显示的值。如需通过建议等临时
         // 禁用的场合，优先使用 forceBlocksDisabled。
+        // actor 模式下强制 blocksEnabled=false（防御性：actor 工具列表里没有 set_scripts，
+        // 但确保三重防御中的一环在 UI 层就生效）。
         const effectiveBlocksEnabled = opts.forceBlocksDisabled ?
             false :
+            mode === 'actor' ? false :
             (typeof opts.blocksEnabled === 'boolean' ? opts.blocksEnabled : blocksEnabled);
         appendMessage({role: 'user', text});
         setRunning(true);
@@ -108,6 +119,7 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
                 signal: controller.signal,
                 blocksEnabled: effectiveBlocksEnabled,
                 lang,
+                mode,
                 onAssistantStart: startAssistant,
                 onAssistantDelta: appendAssistantDelta,
                 onAssistantText: t => appendMessage({role: 'assistant', text: t}),
@@ -135,7 +147,29 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
             finishStreaming();
             abortRef.current = null;
         }
-    }, [vm, apiKey, blocksEnabled, lang, t, appendMessage, finishLastTool, startAssistant, appendAssistantDelta, finishStreaming]);
+    }, [vm, apiKey, blocksEnabled, mode, lang, t, appendMessage, finishLastTool, startAssistant, appendAssistantDelta, finishStreaming]);
+
+    // 切换 agent 模式：持久化到 localStorage，切换瞬间向 apiMessages 注入一行系统提醒
+    const handleSetMode = useCallback(newMode => {
+        if (newMode === mode) return;
+        if (apiMessagesRef.current && apiMessagesRef.current.length > 0) {
+            const noteKey = newMode === 'actor' ? 'modeSwitchToActor' : 'modeSwitchToProgrammer';
+            const noteText = STRINGS[lang][noteKey] || (
+                newMode === 'actor' ?
+                    '(Switched to Actor mode)' :
+                    '(Switched back to Programmer mode)'
+            );
+            apiMessagesRef.current.push({
+                role: 'user',
+                content: [{type: 'text', text: noteText}]
+            });
+        }
+        prevModeRef.current = newMode;
+        setMode(newMode);
+        localStorage.setItem(MODE_STORAGE_KEY, newMode);
+        // actor 模式下 blocksEnabled 不再有意义（actor 工具列表里没有 set_scripts），
+        // 但保持与 ui 显示一致（trialModeNow 仍控制 toggle 显示）
+    }, [mode, lang]);
 
     const handleStop = useCallback(() => {
         if (abortRef.current) abortRef.current.abort();
@@ -179,6 +213,8 @@ const ChatPanel = ({vm, lang = 'ja', collapsed, onToggleCollapse, projectKey}) =
                 trialMode={trialModeNow}
                 currentModel={currentModel}
                 blocksEnabled={trialModeNow ? false : blocksEnabled}
+                mode={mode}
+                onSetMode={handleSetMode}
                 onSend={handleSend}
                 onStop={handleStop}
                 onOpenSettings={() => setShowModal(true)}
