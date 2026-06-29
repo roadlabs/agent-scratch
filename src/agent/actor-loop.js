@@ -1,66 +1,36 @@
-// Anthropic Messages API 的手动 tool use 循环
+// Runtime Actor 模式的 agent loop。
+//
+// 与 agent-loop.js 的关系：
+//   - 镜像 runAgent 的结构（OpenAI 兼容 + Anthropic 双分支）
+//   - 关键替换：
+//     1) handlers ← createRuntimeToolHandlers(vm)（不是 createToolHandlers）
+//     2) system ← getRuntimeActorSystemPrompt(lang)（单一提示，无 getBlockOperationPrompt）
+//     3) tools ← RUNTIME_TOOLS（无 BLOCK_TOOL_NAMES 过滤——actor 工具永不包含 set_scripts）
+//     4) summary/drafting ← summarizeActorToolCall / runtimeDraftingLabel
+//   - 其他（provider dispatch、流式、30 iter 上限、错误处理、prompt caching）保持一致
+//
+// 后续重构 TODO：把 runAgent 与 runActorAgent 共享的内层（dispatch + 循环体）抽取到
+// agent-loop-core.js。本提交按 Option B 复制实现，最小化 blast radius。
+
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import {TOOLS, BLOCK_TOOL_NAMES, summarizeToolCall, draftingLabel} from './tools';
-import {getSystemPrompt, getBlockOperationPrompt} from './system-prompt';
-import {createToolHandlers, ToolError} from './tool-handlers';
-import {runActorAgent} from './actor-loop';
-
-export class AuthError extends Error {}
-
-// 试用模式：未输入密钥时使用的代理 URL（构建时注入。空则无效）
-export const TRIAL_PROXY_URL = process.env.TRIAL_PROXY_URL;
-
-const TRIAL_TOKEN_KEY = 'vibecat-trial-token';
-
-// 从 URL 参数 ?p=xxx 读取令牌并保存到 localStorage（启动时调用）
-export const initTrialToken = () => {
-    const params = new URLSearchParams(window.location.search);
-    const p = params.get('p');
-    if (p) {
-        localStorage.setItem(TRIAL_TOKEN_KEY, p);
-        // 从 URL 中移除参数（以便刷新后不再残留）
-        params.delete('p');
-        const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
-        window.history.replaceState({}, '', newUrl);
-    }
-};
-
-export const getTrialToken = () => localStorage.getItem(TRIAL_TOKEN_KEY) || '';
-
-// 仅在 TRIAL_PROXY_URL 已设置且令牌已保存时启用试用模式
-export const isTrialAvailable = () => Boolean(TRIAL_PROXY_URL && getTrialToken());
-
-const MODEL_STORAGE_KEY = 'vibecat-model';
-const DEEPSEEK_API_KEY_STORAGE_KEY = 'vibecat-deepseek-api-key';
-const OPENAI_API_KEY_STORAGE_KEY = 'vibecat-openai-api-key';
-const GEMINI_API_KEY_STORAGE_KEY = 'vibecat-gemini-api-key';
-
-// 本地开发用密钥（从 .env 经 webpack DefinePlugin 注入。未设置则为空字符串）
-export const DEV_ANTHROPIC_KEY = process.env.DEV_ANTHROPIC_API_KEY || '';
-const DEV_DEEPSEEK_KEY = process.env.DEV_DEEPSEEK_API_KEY || '';
-const DEV_OPENAI_KEY = process.env.DEV_OPENAI_API_KEY || '';
-const DEV_GEMINI_KEY = process.env.DEV_GEMINI_API_KEY || '';
-
-export const DEFAULT_MODEL = 'deepseek-chat'; // 默认模型
-export const TRIAL_MODEL = 'deepseek-chat';   // 试用模式使用的模型
-export const getModel = () => localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
-export const setModel = model => localStorage.setItem(MODEL_STORAGE_KEY, model);
-export const getDeepSeekApiKey = () => localStorage.getItem(DEEPSEEK_API_KEY_STORAGE_KEY) || DEV_DEEPSEEK_KEY;
-export const setDeepSeekApiKey = key => localStorage.setItem(DEEPSEEK_API_KEY_STORAGE_KEY, key);
-export const isDeepSeekModel = model => model && model.startsWith('deepseek-');
-export const getOpenAIApiKey = () => localStorage.getItem(OPENAI_API_KEY_STORAGE_KEY) || DEV_OPENAI_KEY;
-export const setOpenAIApiKey = key => localStorage.setItem(OPENAI_API_KEY_STORAGE_KEY, key);
-export const isOpenAIModel = model => model && model.startsWith('gpt-');
-export const getGeminiApiKey = () => localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY) || DEV_GEMINI_KEY;
-export const setGeminiApiKey = key => localStorage.setItem(GEMINI_API_KEY_STORAGE_KEY, key);
-export const isGeminiModel = model => model && model.startsWith('gemini-');
+import {
+    getDeepSeekApiKey, isDeepSeekModel,
+    getOpenAIApiKey, isOpenAIModel,
+    getGeminiApiKey, isGeminiModel,
+    TRIAL_MODEL, isTrialAvailable, getTrialToken, TRIAL_PROXY_URL,
+    getModel, AuthError
+} from './agent-loop';
+import {ToolError} from './tool-handlers';
+import {RUNTIME_TOOLS, runtimeDraftingLabel, summarizeActorToolCall} from './runtime-tools';
+import {createRuntimeToolHandlers} from './runtime-handlers';
+import {getRuntimeActorSystemPrompt} from './runtime-system-prompt';
 
 const MAX_ITERATIONS = 30;
 const MAX_TOKENS = 16000;
-const REQUEST_TIMEOUT_MS = 180000; // 单次 API 调用的上限（因为是流式传输，通常不会触发的保险）
+const REQUEST_TIMEOUT_MS = 180000;
 
-// 在对话末尾重新附加 cache_control（移动式断点）
+// 在对话末尾重新附加 cache_control（移动式断点；与 agent-loop.js:63 同款）
 const moveCacheMarker = messages => {
     for (const message of messages) {
         if (!Array.isArray(message.content)) continue;
@@ -77,19 +47,16 @@ const moveCacheMarker = messages => {
     }
 };
 
-// Anthropic 格式的工具定义 → 转换为 OpenAI 格式
 const toOpenAITools = tools => tools.map(({name, description, input_schema}) => ({
     type: 'function',
     function: {name, description, parameters: input_schema}
 }));
 
-// 将 OpenAI 格式的对话历史添加到 Anthropic 的 apiMessages 的适配器
-// 此处另行管理 OpenAI 格式的消息数组
+// Anthropic 格式 → OpenAI 格式（与 agent-loop.js:87 同款）
 const anthropicToOpenAIMessages = messages => {
     const result = [];
     for (const msg of messages) {
         if (msg.role === 'user') {
-            // 包含 tool_result 时 → 转换为 tool 消息群
             const toolResults = Array.isArray(msg.content)
                 ? msg.content.filter(b => b.type === 'tool_result')
                 : [];
@@ -123,9 +90,7 @@ const anthropicToOpenAIMessages = messages => {
     return result;
 };
 
-// 指定去除 OpenAI SDK 自动附加的 x-stainless-* 头。
-// Google 的 OpenAI 兼容端点不允许这些头 CORS 跨域，
-// 如果有这些头，预检请求会返回 403 并导致"Connection error."失败
+// Google Gemini 不允许 x-stainless-* 头跨域（与 agent-loop.js:128 同款）
 const STRIP_STAINLESS_HEADERS = {
     'x-stainless-arch': null,
     'x-stainless-lang': null,
@@ -139,9 +104,9 @@ const STRIP_STAINLESS_HEADERS = {
 };
 
 /**
- * OpenAI互換 (DeepSeek / OpenAI / Gemini 共用) エージェントループ
+ * OpenAI 互換 (DeepSeek / OpenAI / Gemini) Actor 模式 エージェントループ
  */
-const runOpenAICompatAgent = async ({
+const runOpenAICompatActorAgent = async ({
     apiKey: compatApiKey,
     baseURL,
     stripSdkHeaders,
@@ -150,7 +115,6 @@ const runOpenAICompatAgent = async ({
     userText,
     apiMessages,
     signal,
-    blocksEnabled,
     lang = 'ja',
     onAssistantStart,
     onAssistantDelta,
@@ -166,15 +130,13 @@ const runOpenAICompatAgent = async ({
         baseURL: baseURL || 'https://api.deepseek.com',
         dangerouslyAllowBrowser: true,
         timeout: REQUEST_TIMEOUT_MS,
-        maxRetries: 2, // 为了承受 503 等临时错误（指数退避自动重试）
+        maxRetries: 2,
         ...(stripSdkHeaders ? {defaultHeaders: STRIP_STAINLESS_HEADERS} : {})
     });
-    const handlers = createToolHandlers(vm, {blocksEnabled});
-    const activeTools = blocksEnabled ? TOOLS : TOOLS.filter(t => !BLOCK_TOOL_NAMES.has(t.name));
-    const oaiTools = toOpenAITools(activeTools);
+    const handlers = createRuntimeToolHandlers(vm);
+    const oaiTools = toOpenAITools(RUNTIME_TOOLS);
     const systemMessages = [
-        {role: 'system', content: getSystemPrompt(lang)},
-        {role: 'system', content: getBlockOperationPrompt(blocksEnabled, lang)}
+        {role: 'system', content: getRuntimeActorSystemPrompt(lang)}
     ];
 
     apiMessages.push({role: 'user', content: [{type: 'text', text: userText}]});
@@ -191,8 +153,6 @@ const runOpenAICompatAgent = async ({
             if (onAssistantStart) onAssistantStart();
             const stream = await client.chat.completions.create({
                 model,
-                // GPT-5 系列不支持 max_tokens（需使用 max_completion_tokens）。
-                // 流式传输时的 usage 获取也需要 OpenAI 明确 opt-in
                 ...(isOpenAI
                     ? {max_completion_tokens: MAX_TOKENS}
                     : {max_tokens: MAX_TOKENS}),
@@ -202,7 +162,6 @@ const runOpenAICompatAgent = async ({
                 stream: true
             }, {signal});
 
-            // 通过流式传输收集文本和 tool_calls
             const partialToolCalls = {};
             for await (const chunk of stream) {
                 if (signal && signal.aborted) return;
@@ -218,7 +177,7 @@ const runOpenAICompatAgent = async ({
                         if (!partialToolCalls[tc.index]) {
                             partialToolCalls[tc.index] = {id: '', type: 'function', function: {name: '', arguments: ''}};
                             if (onToolDrafting && tc.function?.name) {
-                                onToolDrafting(draftingLabel(tc.function.name, lang), 0);
+                                onToolDrafting(runtimeDraftingLabel(tc.function.name, lang), 0);
                             }
                         }
                         const p = partialToolCalls[tc.index];
@@ -227,7 +186,7 @@ const runOpenAICompatAgent = async ({
                         if (tc.function?.arguments) {
                             p.function.arguments += tc.function.arguments;
                             if (onToolDrafting) {
-                                onToolDrafting(draftingLabel(p.function.name, lang), p.function.arguments.length);
+                                onToolDrafting(runtimeDraftingLabel(p.function.name, lang), p.function.arguments.length);
                             }
                         }
                     }
@@ -235,7 +194,6 @@ const runOpenAICompatAgent = async ({
                 if (chunk.choices[0]?.finish_reason && onToolDrafting) {
                     onToolDrafting(null, 0);
                 }
-
             }
             toolCalls = Object.values(partialToolCalls);
         } catch (e) {
@@ -248,7 +206,6 @@ const runOpenAICompatAgent = async ({
                     '混み合っています。少し待ってからもう一度試してください。');
             }
             if (e?.status >= 500) {
-                // Gemini 等频繁发生的一时性服务器过载（503 等）
                 throw new Error(lang === 'zh' ?
                     `AI 服务器繁忙或暂时不可用 (${e.status})。请稍后再发送相同内容。` :
                     lang === 'en' ?
@@ -261,7 +218,6 @@ const runOpenAICompatAgent = async ({
             throw e;
         }
 
-        // 将 assistant 的响应追加到 apiMessages（以 Anthropic 格式统一管理）
         const assistantContent = [];
         if (assistantText) assistantContent.push({type: 'text', text: assistantText});
         for (const tc of toolCalls) {
@@ -273,13 +229,12 @@ const runOpenAICompatAgent = async ({
 
         if (toolCalls.length === 0) return;
 
-        // ツール実行
         const toolResults = [];
         for (const tc of toolCalls) {
             if (signal && signal.aborted) return;
             let input = {};
             try { input = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
-            onToolStart(summarizeToolCall(tc.function.name, input, lang));
+            onToolStart(summarizeActorToolCall(tc.function.name, input, lang));
             let result;
             let isError = false;
             try {
@@ -313,22 +268,16 @@ const runOpenAICompatAgent = async ({
 };
 
 /**
- * エージェントループを実行する。
+ * Actor 模式 エージェントループ。
  * apiMessages は呼び出し側が保持する会話履歴(Anthropic形式)で、in-place に更新される。
- *
- * mode:
- *   'programmer' (默认) — 既存路径，通过 set_scripts DSL 创作积木脚本
- *   'actor'             — Runtime Actor 模式，通过原子动作（move / set_position 等）连续驱动 sprite
  */
-export const runAgent = async ({
+export const runActorAgent = async ({
     apiKey,
     vm,
     userText,
     apiMessages,
     signal,
-    blocksEnabled = true,
     lang = 'ja',
-    mode = 'programmer',
     onAssistantStart,
     onAssistantDelta,
     onAssistantText,
@@ -336,70 +285,57 @@ export const runAgent = async ({
     onToolEnd,
     onToolDrafting
 }) => {
-    // Runtime Actor 模式：完全独立的循环（不同 handlers / system / tools）
-    if (mode === 'actor') {
-        return runActorAgent({
-            apiKey, vm, userText, apiMessages, signal, lang,
-            onAssistantStart, onAssistantDelta, onAssistantText,
-            onToolStart, onToolEnd, onToolDrafting
-        });
-    }
-
     const model = getModel();
 
-    // 试用模式：未输入密钥 + 代理 URL 已设置 + 令牌已保存 → 经由 DeepSeek 代理
+    // 试用模式：经由 DeepSeek 代理
     const useTrial = !apiKey && !getDeepSeekApiKey() && !getOpenAIApiKey() && !getGeminiApiKey() && isTrialAvailable();
     if (useTrial) {
-        return runOpenAICompatAgent({
+        return runOpenAICompatActorAgent({
             apiKey: getTrialToken(),
             baseURL: TRIAL_PROXY_URL,
             model: TRIAL_MODEL,
-            // 试用模式不允许区块操作（固定为说明・讲解模式）
-            vm, userText, apiMessages, signal, blocksEnabled: false, lang,
+            vm, userText, apiMessages, signal, lang,
             onAssistantStart, onAssistantDelta, onAssistantText,
             onToolStart, onToolEnd, onToolDrafting
         });
     }
 
-    // 选择了 DeepSeek 模型时，使用 OpenAI 兼容循环
     if (isDeepSeekModel(model)) {
         const deepseekApiKey = getDeepSeekApiKey();
         if (!deepseekApiKey) throw new AuthError(lang === 'zh' ? '未设置 DeepSeek API 密钥。请从 ⚙️ 进行设置。' : lang === 'en' ? 'No DeepSeek API key is set. Please set it from ⚙️.' : 'DeepSeek APIキーが設定されていません。⚙️ から設定してください。');
-        return runOpenAICompatAgent({
-            apiKey: deepseekApiKey, vm, userText, apiMessages, signal, blocksEnabled, lang,
+        return runOpenAICompatActorAgent({
+            apiKey: deepseekApiKey, vm, userText, apiMessages, signal, lang,
             onAssistantStart, onAssistantDelta, onAssistantText,
             onToolStart, onToolEnd, onToolDrafting
         });
     }
 
-    // 选择了 OpenAI (GPT) 模型时，也使用 OpenAI 兼容循环
     if (isOpenAIModel(model)) {
         const openaiApiKey = getOpenAIApiKey();
         if (!openaiApiKey) throw new AuthError(lang === 'zh' ? '未设置 OpenAI API 密钥。请从 ⚙️ 进行设置。' : lang === 'en' ? 'No OpenAI API key is set. Please set it from ⚙️.' : 'OpenAI APIキーが設定されていません。⚙️ から設定してください。');
-        return runOpenAICompatAgent({
+        return runOpenAICompatActorAgent({
             apiKey: openaiApiKey,
             baseURL: 'https://api.openai.com/v1',
-            vm, userText, apiMessages, signal, blocksEnabled, lang,
+            vm, userText, apiMessages, signal, lang,
             onAssistantStart, onAssistantDelta, onAssistantText,
             onToolStart, onToolEnd, onToolDrafting
         });
     }
 
-    // Google Gemini 模型也通过 OpenAI 兼容端点使用同一循环
     if (isGeminiModel(model)) {
         const geminiApiKey = getGeminiApiKey();
         if (!geminiApiKey) throw new AuthError(lang === 'zh' ? '未设置 Gemini API 密钥。请从 ⚙️ 进行设置。' : lang === 'en' ? 'No Gemini API key is set. Please set it from ⚙️.' : 'Gemini APIキーが設定されていません。⚙️ から設定してください。');
-        return runOpenAICompatAgent({
+        return runOpenAICompatActorAgent({
             apiKey: geminiApiKey,
             baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
             stripSdkHeaders: true,
-            vm, userText, apiMessages, signal, blocksEnabled, lang,
+            vm, userText, apiMessages, signal, lang,
             onAssistantStart, onAssistantDelta, onAssistantText,
             onToolStart, onToolEnd, onToolDrafting
         });
     }
 
-    // Anthropic 模型
+    // Anthropic
     const effectiveModel = model;
     const client = new Anthropic({
         apiKey,
@@ -408,16 +344,14 @@ export const runAgent = async ({
         timeout: REQUEST_TIMEOUT_MS,
         maxRetries: 1
     });
-    const handlers = createToolHandlers(vm, {blocksEnabled});
+    const handlers = createRuntimeToolHandlers(vm);
 
-    // 系统提示词和工具定义是固定的 → prompt caching
+    // system + tools 都是固定的 → prompt caching
     const system = [
-        {type: 'text', text: getSystemPrompt(lang), cache_control: {type: 'ephemeral'}},
-        {type: 'text', text: getBlockOperationPrompt(blocksEnabled, lang)}
+        {type: 'text', text: getRuntimeActorSystemPrompt(lang), cache_control: {type: 'ephemeral'}}
     ];
-    const activeTools = blocksEnabled ? TOOLS : TOOLS.filter(t => !BLOCK_TOOL_NAMES.has(t.name));
-    const tools = activeTools.map((tool, i) =>
-        (i === activeTools.length - 1 ? {...tool, cache_control: {type: 'ephemeral'}} : tool)
+    const tools = RUNTIME_TOOLS.map((tool, i) =>
+        (i === RUNTIME_TOOLS.length - 1 ? {...tool, cache_control: {type: 'ephemeral'}} : tool)
     );
 
     apiMessages.push({role: 'user', content: [{type: 'text', text: userText}]});
@@ -429,7 +363,6 @@ export const runAgent = async ({
 
         let response;
         try {
-            // 通过流式传输调用，将 text 的增量实时反映到 UI
             if (onAssistantStart) onAssistantStart();
             const stream = client.messages.stream({
                 model: effectiveModel,
@@ -442,15 +375,13 @@ export const runAgent = async ({
             if (onAssistantDelta) {
                 stream.on('text', delta => onAssistantDelta(delta));
             }
-            // 因为工具输入(JSON)生成期间正文文本不会流动，
-            // 将「正在编写○○...(n字符)」的进度发送给 UI
             if (onToolDrafting) {
                 let draftLabel = null;
                 let draftChars = 0;
                 stream.on('streamEvent', event => {
                     if (event.type === 'content_block_start' &&
                         event.content_block.type === 'tool_use') {
-                        draftLabel = draftingLabel(event.content_block.name, lang);
+                        draftLabel = runtimeDraftingLabel(event.content_block.name, lang);
                         draftChars = 0;
                         onToolDrafting(draftLabel, 0);
                     } else if (event.type === 'content_block_delta' &&
@@ -463,7 +394,6 @@ export const runAgent = async ({
                     }
                 });
             }
-            // 获取完整的 Message（含 thinking/tool_use 区块）
             response = await stream.finalMessage();
         } catch (e) {
             if (e instanceof Anthropic.AuthenticationError) {
@@ -485,7 +415,6 @@ export const runAgent = async ({
                     `AIサーバーが混み合っているか一瞬的に不通です(${e.status})。` +
                     '少し待ってから、同じ内容をもう一度送ってください。');
             }
-            // adaptive thinking 未支持模型的降级处理
             if (useThinking && e instanceof Anthropic.BadRequestError &&
                 String(e.message).includes('thinking')) {
                 useThinking = false;
@@ -508,7 +437,7 @@ export const runAgent = async ({
                     '時間がかかりすぎたため中断しました。タスクを小さく分けて指示してみてください(例:「まずボールとパドルだけ作って」)。');
             }
             if (e instanceof Anthropic.APIUserAbortError) {
-                return; // 用户主动停止
+                return;
             }
             if (e instanceof Anthropic.APIConnectionError) {
                 throw new Error(lang === 'zh' ?
@@ -522,7 +451,6 @@ export const runAgent = async ({
 
         apiMessages.push({role: 'assistant', content: response.content});
 
-
         if (response.stop_reason !== 'tool_use') {
             if (response.stop_reason === 'max_tokens') {
                 onAssistantText(lang === 'zh' ?
@@ -534,12 +462,11 @@ export const runAgent = async ({
             return;
         }
 
-        // 工具执行
         const toolResults = [];
         for (const block of response.content) {
             if (block.type !== 'tool_use') continue;
             if (signal && signal.aborted) return;
-            onToolStart(summarizeToolCall(block.name, block.input, lang));
+            onToolStart(summarizeActorToolCall(block.name, block.input, lang));
             let result;
             let isError = false;
             try {
@@ -550,7 +477,6 @@ export const runAgent = async ({
                 isError = true;
                 result = {error: e.message};
                 if (!(e instanceof ToolError)) {
-                    // 预期外的异常也输出到控制台
                     console.error(`tool ${block.name} failed:`, e); // eslint-disable-line no-console
                 }
             }
@@ -561,7 +487,6 @@ export const runAgent = async ({
                 content: JSON.stringify(result),
                 ...(isError ? {is_error: true} : {})
             });
-            // 为了展示区块逐渐组装的样子而稍作停顿
             await new Promise(resolve => setTimeout(resolve, 300));
         }
         apiMessages.push({role: 'user', content: toolResults});
