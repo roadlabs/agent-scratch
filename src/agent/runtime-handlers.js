@@ -9,9 +9,11 @@
 //     / goToFront / goToBack / getCustomState / setCustomState
 //   - 其他常见方法（changeX / changeY / turnRight / goTo / glideTo / pointTowards / say /
 //     thinking / moveSteps / goToLayer 等）都不在 RenderedTarget 上！它们是
-//     scratch3_motion.js / scratch3_looks.js 中的 block primitive，需要 (args, util) 调用。
-//   - 本文件避开这些 primitive，纯用 RenderedTarget 公开 API + 自己计算数学 + 通过
-//     custom state + 'SAY' event 操作气泡。
+//     scratch3_motion.js / scratch3_looks.js / scratch3_pen / scratch3_music 等的 block
+//     primitive，需要 (args, util) 调用。
+//   - 本文件对纯 RenderedTarget 公开 API 的操作（移动/旋转/外观/克隆）直接调用；对
+//     primitive 操作（画笔/音乐/朗读/翻译/气泡）通过 runtime.getOpcodeFunction 拿到
+//     绑定函数 + 构造最小 util 对象直接调用，绕过 emit event 的脆弱路径。
 
 import {createToolHandlers, ToolError} from './tool-handlers';
 
@@ -124,16 +126,64 @@ const destToXY = d => {
     throw new ToolError('座標を取得できません');
 };
 
-// 启动气泡显示（通过 runtime event；渲染由 scratch3_looks.js 内部处理）
+// 启动气泡显示。
+// scratch3_looks.js 中 looks_say / looks_think primitive 的实现是：
+//   this.runtime.emit('SAY', util.target, 'say', args.MESSAGE)
+// 然后 _updateBubble 监听器调用 _renderBubble 创建/更新气泡。
+//
+// 我们直接调用 primitive（通过 runtime.getOpcodeFunction），比 emit 更可靠
+// （emit 是 EventEmitter 标准 API，理论上应该一样，但实操中直接调 primitive
+//  可避免 listener 绑定时机/多个 runtime 实例等边界情况）。
 const emitSayThink = (vm, target, type, text) => {
+    const message = String(text || '');
+    // 1. 写入 custom state（listener 会再写一遍，但提前写无害且方便后续读取）
     const state = getBubbleState(target);
     state.type = type;
-    state.text = String(text || '');
+    state.text = message;
     setBubbleState(target, state);
+    // 2. 直接调用 scratch3_looks 的 primitive
+    const opcode = type === 'think' ? 'looks_think' : 'looks_say';
+    if (vm.runtime && typeof vm.runtime.getOpcodeFunction === 'function') {
+        const fn = vm.runtime.getOpcodeFunction(opcode);
+        if (fn) {
+            const util = {target, runtime: vm.runtime};
+            fn({MESSAGE: message}, util);
+            return;
+        }
+    }
+    // 3. 兜底：如果 primitive 拿不到，仍尝试 emit
     if (vm.runtime && typeof vm.runtime.emit === 'function') {
-        vm.runtime.emit(SAY_OR_THINK_EVENT, target, type, state.text);
+        vm.runtime.emit(SAY_OR_THINK_EVENT, target, type, message);
     }
 };
+
+// 通用：调用扩展的 block primitive。
+// pen / music / text2speech / translate 都是 extension，第一次调用前需要加载。
+const callExtensionPrimitive = async (vm, extensionId, opcode, args, target) => {
+    if (!vm.extensionManager) {
+        throw new ToolError('extensionManager が利用できません');
+    }
+    if (!vm.extensionManager.isExtensionLoaded(extensionId)) {
+        await vm.extensionManager.loadExtensionURL(extensionId);
+    }
+    const fn = vm.runtime.getOpcodeFunction(opcode);
+    if (!fn) {
+        throw new ToolError(`拡張機能 "${extensionId}" の primitive "${opcode}" が見つかりません`);
+    }
+    return await fn(args, {target, runtime: vm.runtime});
+};
+
+// 把 '#rrggbb' 字符串转换为 0xRRGGBB 数字（pen COLOR 参数期望）
+const hexColorToInt = hex => {
+    if (typeof hex === 'number') return hex;
+    if (typeof hex !== 'string') return null;
+    const m = hex.trim().match(/^#?([0-9a-f]{6})$/i);
+    if (!m) return null;
+    return parseInt(m[1], 16);
+};
+
+// 颜色参数枚举（对应 pen extension 的 colorParam 菜单）
+const PEN_COLOR_PARAMS = new Set(['color', 'saturation', 'brightness', 'transparency']);
 
 // 清除气泡
 const clearSayThink = (vm, target) => {
@@ -358,6 +408,158 @@ export const createRuntimeToolHandlers = vm => {
         actor_stop_project: () => {
             vm.stopAll();
             return {ok: true, running: false};
+        },
+
+        // ── 画筆（pen 拡張） ────────────────────────────────────
+        actor_pen_down: async ({target}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'penDown', {}, t);
+            return withStateEcho(t, 'pen_down');
+        },
+        actor_pen_up: async ({target}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'penUp', {}, t);
+            return withStateEcho(t, 'pen_up');
+        },
+        actor_pen_clear: async () => {
+            // clear はどの target にも属さない（ステージ全体）が、primitive は util を要求するので
+            // ステージを渡して呼び出す。runtime の _getPenLayerID が -1 を返す時は何もしない。
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'pen', 'clear', {}, stage);
+            return {ok: true, action: 'pen_clear'};
+        },
+        actor_pen_stamp: async ({target}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはスタンプを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'stamp', {}, t);
+            return withStateEcho(t, 'pen_stamp');
+        },
+        actor_pen_set_color: async ({target, color}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            // 数字（0xRRGGBB）でも '#rrggbb' 文字列でも受け付ける
+            let colorInt;
+            if (typeof color === 'number') colorInt = color;
+            else if (typeof color === 'string') {
+                colorInt = hexColorToInt(color);
+                if (colorInt === null) throw new ToolError(`color は "#rrggbb" 形式または 0xRRGGBB 整数です（入力: ${color}）`);
+            } else {
+                throw new ToolError('color は "#rrggbb" 文字列または 0xRRGGBB 整数で指定してください');
+            }
+            await callExtensionPrimitive(vm, 'pen', 'setPenColorToColor', {COLOR: colorInt}, t);
+            return withStateEcho(t, `pen_set_color(#${colorInt.toString(16).padStart(6, '0')})`);
+        },
+        actor_pen_change_color_param: async ({target, param, value}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            if (!PEN_COLOR_PARAMS.has(param)) {
+                throw new ToolError(`param は ${[...PEN_COLOR_PARAMS].join(' / ')} のいずれかです`);
+            }
+            await callExtensionPrimitive(vm, 'pen', 'changePenColorParamBy', {COLOR_PARAM: param, VALUE: value}, t);
+            return withStateEcho(t, `pen_change_${param}(${value})`);
+        },
+        actor_pen_set_color_param: async ({target, param, value}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            if (!PEN_COLOR_PARAMS.has(param)) {
+                throw new ToolError(`param は ${[...PEN_COLOR_PARAMS].join(' / ')} のいずれかです`);
+            }
+            await callExtensionPrimitive(vm, 'pen', 'setPenColorParamTo', {COLOR_PARAM: param, VALUE: value}, t);
+            return withStateEcho(t, `pen_set_${param}(${value})`);
+        },
+        actor_pen_set_size: async ({target, size}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'setPenSizeTo', {SIZE: size}, t);
+            return withStateEcho(t, `pen_set_size(${size})`);
+        },
+        actor_pen_change_size: async ({target, size}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'changePenSizeBy', {SIZE: size}, t);
+            return withStateEcho(t, `pen_change_size(${size})`);
+        },
+        actor_pen_set_shade: async ({target, shade}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'setPenShadeToNumber', {SHADE: shade}, t);
+            return withStateEcho(t, `pen_set_shade(${shade})`);
+        },
+        actor_pen_change_shade: async ({target, shade}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            await callExtensionPrimitive(vm, 'pen', 'changePenShadeBy', {SHADE: shade}, t);
+            return withStateEcho(t, `pen_change_shade(${shade})`);
+        },
+
+        // ── 音楽（music 拡張） ──────────────────────────────────
+        actor_play_note: async ({note, beats}) => {
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'music', 'playNoteForBeats', {NOTE: note, BEATS: beats}, stage);
+            return {ok: true, action: `play_note(${note}, ${beats})`};
+        },
+        actor_play_drum: async ({drum, beats}) => {
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'music', 'playDrumForBeats', {DRUM: drum, BEATS: beats}, stage);
+            return {ok: true, action: `play_drum(${drum}, ${beats})`};
+        },
+        actor_rest_for_beats: async ({beats}) => {
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'music', 'restForBeats', {BEATS: beats}, stage);
+            return {ok: true, action: `rest(${beats})`};
+        },
+        actor_set_instrument: async ({instrument}) => {
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'music', 'setInstrument', {INSTRUMENT: instrument}, stage);
+            return {ok: true, action: `set_instrument(${instrument})`};
+        },
+        actor_set_tempo: async ({tempo}) => {
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'music', 'setTempo', {TEMPO: tempo}, stage);
+            return {ok: true, action: `set_tempo(${tempo})`};
+        },
+        actor_change_tempo: async ({tempo}) => {
+            const stage = vm.runtime.getTargetForStage();
+            await callExtensionPrimitive(vm, 'music', 'changeTempo', {TEMPO: tempo}, stage);
+            return {ok: true, action: `change_tempo(${tempo})`};
+        },
+
+        // ── テキスト読み上げ（text2speech 拡張） ─────────────────
+        actor_speak: async ({target, words}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージは speak できません');
+            await callExtensionPrimitive(vm, 'text2speech', 'speakAndWait', {WORDS: words}, t);
+            return withStateEcho(t, `speak("${words}")`);
+        },
+        actor_set_voice: async ({target, voice}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージは音声設定できません');
+            await callExtensionPrimitive(vm, 'text2speech', 'setVoice', {VOICE: voice}, t);
+            return withStateEcho(t, `set_voice(${voice})`);
+        },
+        actor_set_speech_language: async ({target, language}) => {
+            const t = findTarget(vm, target);
+            if (t.isStage) throw new ToolError('ステージは言語設定できません');
+            await callExtensionPrimitive(vm, 'text2speech', 'setLanguage', {LANGUAGE: language}, t);
+            return withStateEcho(t, `set_speech_language(${language})`);
+        },
+
+        // ── 翻訳（translate 拡張） ──────────────────────────────
+        actor_translate: async ({words, language}) => {
+            const stage = vm.runtime.getTargetForStage();
+            const result = await callExtensionPrimitive(
+                vm, 'translate', 'getTranslate', {WORDS: words, LANGUAGE: language}, stage
+            );
+            return {ok: true, action: `translate(${language})`, original: words, translated: result};
+        },
+        actor_get_viewer_language: async () => {
+            const stage = vm.runtime.getTargetForStage();
+            const lang = await callExtensionPrimitive(
+                vm, 'translate', 'getViewerLanguage', {}, stage
+            );
+            return {ok: true, language: lang};
         }
     };
 };

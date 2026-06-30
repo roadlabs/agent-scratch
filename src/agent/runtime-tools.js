@@ -8,6 +8,8 @@
 //     实现 closed feedback loop（LLM 每次动作后必定看到最新状态）
 //   - get_state 是唯一的全量观察入口；list_sprites 是轻量枚举入口
 //   - 资产/克隆/执行控制工具与程序员模式共享底层（createToolHandlers / vm.*），只是命名空间前缀不同
+//   - 画笔/音乐/朗读/翻译通过 scratch-vm 扩展（pen / music / text2speech / translate）的
+//     block primitive 实现，第一次调用时自动加载扩展
 
 const spriteNameProp = {type: 'string', description: 'スプライト名（実名。actor_list_sprites で確認）'};
 const xyProps = {
@@ -311,6 +313,251 @@ export const RUNTIME_TOOLS = [
     {
         name: 'actor_stop_project',
         description: 'プロジェクトの実行を止める。',
+        input_schema: {type: 'object', properties: {}}
+    },
+
+    // ── 画筆（pen 拡張機能） ────────────────────────────────────────
+    {
+        name: 'actor_pen_down',
+        description: '指定したスプライトのペンを下ろす（以後、移動すると線が引かれる）。',
+        input_schema: {
+            type: 'object',
+            properties: {target: spriteNameProp},
+            required: ['target']
+        }
+    },
+    {
+        name: 'actor_pen_up',
+        description: '指定したスプライトのペンを上げる（線が引かれなくなる）。',
+        input_schema: {
+            type: 'object',
+            properties: {target: spriteNameProp},
+            required: ['target']
+        }
+    },
+    {
+        name: 'actor_pen_clear',
+        description: 'ステージ上のすべてのペン痕とスタンプを消去する。',
+        input_schema: {type: 'object', properties: {}}
+    },
+    {
+        name: 'actor_pen_stamp',
+        description: '指定したスプライトの現在の姿をステージにスタンプする。',
+        input_schema: {
+            type: 'object',
+            properties: {target: spriteNameProp},
+            required: ['target']
+        }
+    },
+    {
+        name: 'actor_pen_set_color',
+        description: 'ペンの色を設定する（"#rrggbb" 文字列または 0xRRGGBB 整数）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                color: {
+                    description: '"#ff8800" のような 6桁 hex 文字列、または 0xFF8800 のような整数',
+                    oneOf: [
+                        {type: 'string', pattern: '^#?[0-9a-fA-F]{6}$'},
+                        {type: 'integer', minimum: 0, maximum: 16777215}
+                    ]
+                }
+            },
+            required: ['target', 'color']
+        }
+    },
+    {
+        name: 'actor_pen_change_color_param',
+        description: 'ペンの色相・彩度・明度・透明度のいずれかを指定量だけ変更する。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                param: {type: 'string', enum: ['color', 'saturation', 'brightness', 'transparency']},
+                value: {type: 'number'}
+            },
+            required: ['target', 'param', 'value']
+        }
+    },
+    {
+        name: 'actor_pen_set_color_param',
+        description: 'ペンの色相・彩度・明度・透明度のいずれかを指定値に設定する。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                param: {type: 'string', enum: ['color', 'saturation', 'brightness', 'transparency']},
+                value: {type: 'number'}
+            },
+            required: ['target', 'param', 'value']
+        }
+    },
+    {
+        name: 'actor_pen_set_size',
+        description: 'ペンの太さを設定する（1〜1200）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                size: {type: 'number', minimum: 1, maximum: 1200}
+            },
+            required: ['target', 'size']
+        }
+    },
+    {
+        name: 'actor_pen_change_size',
+        description: 'ペンの太さを指定量だけ変更する。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                size: {type: 'number'}
+            },
+            required: ['target', 'size']
+        }
+    },
+    {
+        name: 'actor_pen_set_shade',
+        description: 'ペンのシェード（明度・濃さ）を設定する（レガシー互換、0〜200）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                shade: {type: 'number'}
+            },
+            required: ['target', 'shade']
+        }
+    },
+    {
+        name: 'actor_pen_change_shade',
+        description: 'ペンのシェードを指定量だけ変更する（レガシー互換）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                shade: {type: 'number'}
+            },
+            required: ['target', 'shade']
+        }
+    },
+
+    // ── 音楽（music 拡張機能） ──────────────────────────────────────
+    {
+        name: 'actor_play_note',
+        description: '指定した MIDI ノート番号（0〜127）を指定拍数鳴らす。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                note: {type: 'integer', minimum: 0, maximum: 127, description: 'MIDI ノート番号（60 = 中央 C）'},
+                beats: {type: 'number', minimum: 0, description: '拍数'}
+            },
+            required: ['note', 'beats']
+        }
+    },
+    {
+        name: 'actor_play_drum',
+        description: '指定したドラム（1〜18）を指定拍数鳴らす。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                drum: {type: 'integer', minimum: 1, maximum: 18},
+                beats: {type: 'number', minimum: 0}
+            },
+            required: ['drum', 'beats']
+        }
+    },
+    {
+        name: 'actor_rest_for_beats',
+        description: '指定した拍数、休符（無音）を入れる。',
+        input_schema: {
+            type: 'object',
+            properties: {beats: {type: 'number', minimum: 0}},
+            required: ['beats']
+        }
+    },
+    {
+        name: 'actor_set_instrument',
+        description: '楽器を切り替える（1〜21: ピアノ、ギターなど）。',
+        input_schema: {
+            type: 'object',
+            properties: {instrument: {type: 'integer', minimum: 1, maximum: 21}},
+            required: ['instrument']
+        }
+    },
+    {
+        name: 'actor_set_tempo',
+        description: 'テンポ（BPM）を設定する。',
+        input_schema: {
+            type: 'object',
+            properties: {tempo: {type: 'number', minimum: 20, maximum: 500}},
+            required: ['tempo']
+        }
+    },
+    {
+        name: 'actor_change_tempo',
+        description: 'テンポを指定量だけ変更する。',
+        input_schema: {
+            type: 'object',
+            properties: {tempo: {type: 'number'}},
+            required: ['tempo']
+        }
+    },
+
+    // ── テキスト読み上げ（text2speech 拡張機能） ───────────────────
+    {
+        name: 'actor_speak',
+        description: '指定したスプライトに文字列を読み上げさせる（音声合成、話しながら待つ）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                words: {type: 'string', description: '読み上げる文字列'}
+            },
+            required: ['target', 'words']
+        }
+    },
+    {
+        name: 'actor_set_voice',
+        description: '音声合成の声質を設定する（alto / tenor / squeak / giant / kitten など）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                voice: {type: 'string'}
+            },
+            required: ['target', 'voice']
+        }
+    },
+    {
+        name: 'actor_set_speech_language',
+        description: '音声合成の言語を設定する（"en" / "ja" / "zh" など）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: spriteNameProp,
+                language: {type: 'string'}
+            },
+            required: ['target', 'language']
+        }
+    },
+
+    // ── 翻訳（translate 拡張機能） ──────────────────────────────────
+    {
+        name: 'actor_translate',
+        description: '指定した文字列を指定言語に翻訳する（外部 API 呼び出し、結果は同期的に返るまで Promise）。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                words: {type: 'string', description: '翻訳元の文字列'},
+                language: {type: 'string', description: '翻訳先の言語（"en" / "ja" / "zh" / "es" など）'}
+            },
+            required: ['words', 'language']
+        }
+    },
+    {
+        name: 'actor_get_viewer_language',
+        description: 'プロジェクト閲覧者の言語（ブラウザの言語）を取得する。',
         input_schema: {type: 'object', properties: {}}
     }
 ];

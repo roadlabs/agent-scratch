@@ -24,13 +24,25 @@ const expectedNames = [
     'actor_add_sprite', 'actor_delete_sprite', 'actor_rename_sprite', 'actor_clone_sprite',
     'actor_add_costume', 'actor_add_sound', 'actor_add_backdrop',
     // 执行
-    'actor_start_project', 'actor_stop_project'
+    'actor_start_project', 'actor_stop_project',
+    // 画笔
+    'actor_pen_down', 'actor_pen_up', 'actor_pen_clear', 'actor_pen_stamp',
+    'actor_pen_set_color', 'actor_pen_change_color_param', 'actor_pen_set_color_param',
+    'actor_pen_set_size', 'actor_pen_change_size',
+    'actor_pen_set_shade', 'actor_pen_change_shade',
+    // 音乐
+    'actor_play_note', 'actor_play_drum', 'actor_rest_for_beats',
+    'actor_set_instrument', 'actor_set_tempo', 'actor_change_tempo',
+    // 朗读
+    'actor_speak', 'actor_set_voice', 'actor_set_speech_language',
+    // 翻译
+    'actor_translate', 'actor_get_viewer_language'
 ];
 
 for (const name of expectedNames) {
     assert.ok(RUNTIME_TOOL_NAMES.has(name), `RUNTIME_TOOL_NAMES 应包含 ${name}`);
 }
-console.log(`test1 OK: RUNTIME_TOOL_NAMES 包含全部 ${expectedNames.length} 个预期工具名`);
+console.log(`test1 OK: RUNTIME_TOOL_NAMES 包含全部 ${expectedNames.length} 个预期工具名（实际工具总数 ${RUNTIME_TOOL_NAMES.size}）`);
 
 // --- 所有工具名以 actor_ 前缀且唯一 ---
 const allNames = RUNTIME_TOOLS.map(t => t.name);
