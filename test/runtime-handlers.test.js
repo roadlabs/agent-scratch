@@ -1,12 +1,17 @@
 // runtime-handlers 的单元测试
 // - 通过 fake VM 验证：原子动作调用正确的 RenderedTarget 方法、返回的 state 含 post-snapshot
 // - 错误路径：找不到 sprite、对 stage 执行 sprite-only 工具应抛出 ToolError
+// - 注意：scratch-vm RenderedTarget 公开 API 只有 setXY / setDirection / setVisible / setSize
+//   / setCostume / goToFront / goToBack / getCustomState / setCustomState。
+//   move / turn / glide / pointTowards / go_to 都通过 setXY + setDirection 自己计算
+//   （scratch3_motion.js 的 primitive 不在 RenderedTarget 上）。
+//   say/think 通过 custom state + 'SAY' runtime event。
 /* eslint-disable no-console */
 import assert from 'assert';
 import {ToolError} from '../src/agent/tool-handlers';
 import {createRuntimeToolHandlers} from '../src/agent/runtime-handlers';
 
-// 构造一个最小的 RenderedTarget 替身（记录方法调用）
+// 构造一个最小的 RenderedTarget 替身（记录方法调用 + 模拟 scratch-vm 公开 API）
 const makeFakeTarget = (props = {}) => {
     const defaults = {
         name: 'Sprite1',
@@ -19,11 +24,11 @@ const makeFakeTarget = (props = {}) => {
         size: 100,
         visible: true,
         currentCostume: 0,
-        sayingText: '',
-        thinkingText: '',
-        bubbleType: null,
         costumes: [{name: 'costume1'}, {name: 'costume2'}],
-        sounds: []
+        sounds: [],
+        // custom state 模拟 scratch3_looks.js 的 BUBBLE_STATE_KEY
+        _customState: null,
+        _emitCalls: []
     };
     const t = {...defaults, ...props};
     const calls = [];
@@ -33,8 +38,6 @@ const makeFakeTarget = (props = {}) => {
     t.getCostumes = () => t.costumes;
     t.getSounds = () => t.sounds;
     t.setXY = (nx, ny) => { rec('setXY', [nx, ny]); t.x = nx; t.y = ny; };
-    t.changeX = dx => { rec('changeX', [dx]); t.x += dx; };
-    t.changeY = dy => { rec('changeY', [dy]); t.y += dy; };
     t.setSize = s => { rec('setSize', [s]); t.size = s; };
     t.setDirection = d => { rec('setDirection', [d]); t.direction = d; };
     t.setVisible = v => { rec('setVisible', [v]); t.visible = v; };
@@ -46,14 +49,13 @@ const makeFakeTarget = (props = {}) => {
         }
         return false;
     };
-    t.goToLayer = layer => { rec('goToLayer', [layer]); };
-    t.say = text => { rec('say', [text]); t.sayingText = text; t.bubbleType = 'say'; };
-    t.think = text => { rec('think', [text]); t.thinkingText = text; t.bubbleType = 'think'; };
-    t.stopSpeaking = () => { rec('stopSpeaking', []); t.sayingText = ''; t.thinkingText = ''; t.bubbleType = null; };
-    t.turnRight = deg => { rec('turnRight', [deg]); t.direction += deg; };
-    t.glideTo = async (gx, gy, secs) => { rec('glideTo', [gx, gy, secs]); t.x = gx; t.y = gy; };
-    t.pointTowards = target => { rec('pointTowards', [target]); };
-    t.goTo = target => { rec('goTo', [target]); };
+    t.goToFront = () => { rec('goToFront', []); };
+    t.goToBack = () => { rec('goToBack', []); };
+    // scratch3_looks.js 的 custom state 接口
+    t.getCustomState = key => t._customState && t._customState[key];
+    t.setCustomState = (key, value) => {
+        t._customState = {...(t._customState || {}), [key]: value};
+    };
     return t;
 };
 
@@ -68,21 +70,20 @@ const makeFakeVm = ({targets = [], stage = null} = {}) => {
     };
 };
 
-// --- 测试 1: actor_move 调用 changeX + changeY，state 含 post-snapshot ---
+// --- 测试 1: actor_move 调用 setXY（自己计算 dx/dy 后的位置） ---
 {
-    const sprite = makeFakeTarget({x: 0, y: 0});
+    const sprite = makeFakeTarget({x: 10, y: 20});
     const vm = makeFakeVm({targets: [sprite]});
     const handlers = createRuntimeToolHandlers(vm);
     const result = handlers.actor_move({target: 'Sprite1', dx: 30, dy: 40});
 
-    assert.strictEqual(sprite._calls.length, 2, 'actor_move 应调用 2 个方法');
-    assert.deepStrictEqual(sprite._calls[0], {method: 'changeX', args: [30]});
-    assert.deepStrictEqual(sprite._calls[1], {method: 'changeY', args: [40]});
+    assert.strictEqual(sprite._calls.length, 1, 'actor_move 应只调用 setXY 一次');
+    assert.deepStrictEqual(sprite._calls[0], {method: 'setXY', args: [40, 60]});
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.target, 'Sprite1');
-    assert.strictEqual(result.state.x, 30, 'state.x 应反映 post-position');
-    assert.strictEqual(result.state.y, 40, 'state.y 应反映 post-position');
-    console.log('test1 OK: actor_move 调用 changeX/changeY 且回显 post-state');
+    assert.strictEqual(result.state.x, 40, 'state.x 应反映 post-position');
+    assert.strictEqual(result.state.y, 60, 'state.y 应反映 post-position');
+    console.log('test1 OK: actor_move 调用 setXY 且回显 post-state');
 }
 
 // --- 测试 2: actor_set_position 调用 setXY ---
@@ -99,31 +100,44 @@ const makeFakeVm = ({targets = [], stage = null} = {}) => {
     console.log('test2 OK: actor_set_position 调用 setXY 且回显 post-state');
 }
 
-// --- 测试 3: actor_turn 调用 turnRight ---
+// --- 测试 3: actor_turn 调用 setDirection（自己计算相对值） ---
 {
     const sprite = makeFakeTarget({direction: 90});
     const vm = makeFakeVm({targets: [sprite]});
     const handlers = createRuntimeToolHandlers(vm);
     const result = handlers.actor_turn({target: 'Sprite1', degrees: 45});
 
-    assert.strictEqual(sprite._calls[0].method, 'turnRight');
-    assert.deepStrictEqual(sprite._calls[0].args, [45]);
+    assert.strictEqual(sprite._calls[0].method, 'setDirection');
+    assert.deepStrictEqual(sprite._calls[0].args, [135]);
     assert.strictEqual(result.state.direction, 135);
-    console.log('test3 OK: actor_turn 调用 turnRight 且回显 post-state');
+    console.log('test3 OK: actor_turn 计算相对值后调用 setDirection 且回显 post-state');
 }
 
-// --- 测试 4: actor_say 调用 say 并在 state.saying 中回显 ---
+// --- 测试 4: actor_say 通过 custom state + 'SAY' event 实现 ---
 {
     const sprite = makeFakeTarget();
+    const emitted = [];
     const vm = makeFakeVm({targets: [sprite]});
+    vm.runtime.emit = (event, target, type, text) => {
+        emitted.push({event, target: target.name, type, text});
+    };
     const handlers = createRuntimeToolHandlers(vm);
     const result = handlers.actor_say({target: 'Sprite1', text: 'hello'});
 
-    assert.strictEqual(sprite._calls[0].method, 'say');
-    assert.strictEqual(sprite.sayingText, 'hello');
+    // 1. 应写入 custom state
+    const bubbleState = sprite.getCustomState('Scratch.looks');
+    assert.ok(bubbleState, 'custom state 应被设置');
+    assert.strictEqual(bubbleState.type, 'say');
+    assert.strictEqual(bubbleState.text, 'hello');
+    // 2. 应 emit 'SAY' event
+    assert.strictEqual(emitted.length, 1);
+    assert.strictEqual(emitted[0].event, 'SAY');
+    assert.strictEqual(emitted[0].type, 'say');
+    assert.strictEqual(emitted[0].text, 'hello');
+    // 3. state 回显
     assert.strictEqual(result.state.saying, 'hello');
     assert.strictEqual(result.state.bubble, 'say');
-    console.log('test4 OK: actor_say 调用 say 且回显 post-state（含 saying + bubble）');
+    console.log('test4 OK: actor_say 写入 custom state + emit SAY event 且回显 post-state');
 }
 
 // --- 测试 5: actor_get_state 返回全量 sprite 列表 ---
