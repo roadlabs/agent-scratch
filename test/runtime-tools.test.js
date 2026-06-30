@@ -36,7 +36,9 @@ const expectedNames = [
     // 朗读
     'actor_speak', 'actor_set_voice', 'actor_set_speech_language',
     // 翻译
-    'actor_translate', 'actor_get_viewer_language'
+    'actor_translate', 'actor_get_viewer_language',
+    // 扩展启用
+    'actor_ensure_extension'
 ];
 
 for (const name of expectedNames) {

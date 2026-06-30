@@ -87,6 +87,7 @@ export const RUNTIME_ACTOR_SYSTEM_PROMPT_EN = `You are a Scratch **Runtime Actor
 - **To other sprite**: actor_go_to(target, destination), actor_point_towards(target, towards)
 - **Assets**: actor_add_sprite, actor_clone_sprite, actor_delete_sprite, actor_add_costume, actor_add_sound, actor_add_backdrop
 - **Run**: actor_start_project, actor_stop_project
+- **Extension activation**: actor_ensure_extension (call before using pen / music / text2speech / translate)
 
 # Important notes
 
@@ -134,6 +135,7 @@ export const RUNTIME_ACTOR_SYSTEM_PROMPT_ZH = `你是 Scratch 的 **Runtime Acto
 - **到其他角色**：actor_go_to(target, destination)、actor_point_towards(target, towards)
 - **资产**：actor_add_sprite、actor_clone_sprite、actor_delete_sprite、actor_add_costume、actor_add_sound、actor_add_backdrop
 - **运行**：actor_start_project、actor_stop_project
+- **扩展启用**：actor_ensure_extension（使用 pen / music / text2speech / translate 前调用）
 
 # 重要说明
 

@@ -559,6 +559,25 @@ export const RUNTIME_TOOLS = [
         name: 'actor_get_viewer_language',
         description: 'プロジェクト閲覧者の言語（ブラウザの言語）を取得する。',
         input_schema: {type: 'object', properties: {}}
+    },
+
+    // ── 拡張機能の明示的有効化 ─────────────────────────────────────
+    {
+        name: 'actor_ensure_extension',
+        description: 'pen / music / text2speech / translate 拡張を明示的に有効化する。' +
+            '他の拡張ツール（actor_pen_* など）を使う前に呼ぶと、拡張読み込みと primitive 登録が確実に行われる。' +
+            '既に読み込まれている場合は no-op で即座に返す。',
+        input_schema: {
+            type: 'object',
+            properties: {
+                extension_id: {
+                    type: 'string',
+                    enum: ['pen', 'music', 'text2speech', 'translate'],
+                    description: '有効化する拡張の ID'
+                }
+            },
+            required: ['extension_id']
+        }
     }
 ];
 

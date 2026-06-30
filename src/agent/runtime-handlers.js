@@ -157,8 +157,29 @@ const emitSayThink = (vm, target, type, text) => {
     }
 };
 
+// 等待 primitive 注册完成。
+// loadExtensionURL 解析时，primitive 还没通过 dispatch.call 异步注册到
+// runtime._primitives，需要轮询 getOpcodeFunction 直到可见。
+const waitForPrimitive = (vm, extensionId, opcode, timeoutMs = 2000) =>
+    new Promise((resolve, reject) => {
+        const start = Date.now();
+        const check = () => {
+            const fn = vm.runtime.getOpcodeFunction(opcode);
+            if (fn) return resolve(fn);
+            if (Date.now() - start > timeoutMs) {
+                return reject(new ToolError(
+                    `拡張機能 "${extensionId}" の primitive "${opcode}" が登録されませんでした（タイムアウト）`
+                ));
+            }
+            setTimeout(check, 20);
+        };
+        check();
+    });
+
 // 通用：调用扩展的 block primitive。
 // pen / music / text2speech / translate 都是 extension，第一次调用前需要加载。
+// 注意：loadExtensionURL 的 Promise 解析时 primitive 注册尚未完成（通过
+// dispatch.call 异步进行），所以必须先 waitForPrimitive。
 const callExtensionPrimitive = async (vm, extensionId, opcode, args, target) => {
     if (!vm.extensionManager) {
         throw new ToolError('extensionManager が利用できません');
@@ -166,10 +187,7 @@ const callExtensionPrimitive = async (vm, extensionId, opcode, args, target) => 
     if (!vm.extensionManager.isExtensionLoaded(extensionId)) {
         await vm.extensionManager.loadExtensionURL(extensionId);
     }
-    const fn = vm.runtime.getOpcodeFunction(opcode);
-    if (!fn) {
-        throw new ToolError(`拡張機能 "${extensionId}" の primitive "${opcode}" が見つかりません`);
-    }
+    const fn = await waitForPrimitive(vm, extensionId, opcode);
     return await fn(args, {target, runtime: vm.runtime});
 };
 
@@ -560,6 +578,31 @@ export const createRuntimeToolHandlers = vm => {
                 vm, 'translate', 'getViewerLanguage', {}, stage
             );
             return {ok: true, language: lang};
+        },
+
+        // ── 拡張機能の明示的有効化 ────────────────────────────────
+        // pen / music / text2speech / translate を使う前に agent が呼び出すことで、
+        // 拡張の読み込みと primitive 登録を待つ。エラー検出の早期化にも使う。
+        actor_ensure_extension: async ({extension_id}) => {
+            const KNOWN = ['pen', 'music', 'text2speech', 'translate'];
+            if (!KNOWN.includes(extension_id)) {
+                throw new ToolError(`extension_id は ${KNOWN.join(' / ')} のいずれかです（入力: ${extension_id}）`);
+            }
+            if (!vm.extensionManager) {
+                throw new ToolError('extensionManager が利用できません');
+            }
+            if (vm.extensionManager.isExtensionLoaded(extension_id)) {
+                return {ok: true, extension_id, already_loaded: true};
+            }
+            await vm.extensionManager.loadExtensionURL(extension_id);
+            // primitive 登録完了を待つ（最大 3 秒、典型的には数十 ms）
+            await new Promise(resolve => setTimeout(resolve, 50));
+            return {
+                ok: true,
+                extension_id,
+                loaded: true,
+                hint: `${extension_id} 拡張が有効になりました。関連するツールを呼び出せます。`
+            };
         }
     };
 };
