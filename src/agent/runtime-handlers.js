@@ -178,8 +178,10 @@ const waitForPrimitive = (vm, extensionId, opcode, timeoutMs = 2000) =>
 
 // 通用：调用扩展的 block primitive。
 // pen / music / text2speech / translate 都是 extension，第一次调用前需要加载。
-// 注意：loadExtensionURL 的 Promise 解析时 primitive 注册尚未完成（通过
-// dispatch.call 异步进行），所以必须先 waitForPrimitive。
+// **关键**：scratch-vm 内部把扩展 opcode 用 `${extensionId}_${opcode}` 前缀化
+// （参考 runtime.js:1082 `extendedOpcode = ${categoryInfo.id}_${blockInfo.opcode}`），
+// 所以 primitive 注册到 runtime._primitives 时的 key 是带前缀的（'pen_penDown'），
+// 不能用裸 opcode（'penDown'）查找。
 const callExtensionPrimitive = async (vm, extensionId, opcode, args, target) => {
     if (!vm.extensionManager) {
         throw new ToolError('extensionManager が利用できません');
@@ -187,7 +189,8 @@ const callExtensionPrimitive = async (vm, extensionId, opcode, args, target) => 
     if (!vm.extensionManager.isExtensionLoaded(extensionId)) {
         await vm.extensionManager.loadExtensionURL(extensionId);
     }
-    const fn = await waitForPrimitive(vm, extensionId, opcode);
+    const extendedOpcode = `${extensionId}_${opcode}`;
+    const fn = await waitForPrimitive(vm, extensionId, extendedOpcode);
     return await fn(args, {target, runtime: vm.runtime});
 };
 
