@@ -166,3 +166,27 @@ export const getRuntimeActorSystemPrompt = lang => {
     if (lang === 'zh') return RUNTIME_ACTOR_SYSTEM_PROMPT_ZH;
     return RUNTIME_ACTOR_SYSTEM_PROMPT_JA;
 };
+
+// 简单的语言检测：基于用户输入文本中的字符集
+//   含日文假名 → 'ja'
+//   含 CJK 汉字但无假名 → 'zh'
+//   纯 ASCII / 其他 → 'en'
+// 用于让 actor system prompt 跟随用户输入语言，而不是 Scratch locale。
+// 返回 null 表示无法判断（让调用方决定回退策略）
+export const detectUserLanguage = text => {
+    if (typeof text !== 'string' || !text) return null;
+    let hasHiraganaKatakana = false;
+    let hasHan = false;
+    for (const ch of text) {
+        const code = ch.codePointAt(0);
+        // 平假名 0x3040-0x309F
+        if (code >= 0x3040 && code <= 0x309F) hasHiraganaKatakana = true;
+        // 片假名 0x30A0-0x30FF
+        else if (code >= 0x30A0 && code <= 0x30FF) hasHiraganaKatakana = true;
+        // CJK 统一汉字（基本）0x4E00-0x9FFF
+        else if (code >= 0x4E00 && code <= 0x9FFF) hasHan = true;
+    }
+    if (hasHiraganaKatakana) return 'ja';
+    if (hasHan) return 'zh';
+    return 'en';
+};

@@ -155,6 +155,81 @@ useEffect(() => {
 - 正确：`vm.extensionManager.isExtensionLoaded('pen')`
 - 错误：`vm.runtime._extensions.isExtensionLoaded('pen')` → `_extensions` 不存在
 
+### scratch-vm RenderedTarget 公开 API 的实际边界（实测，非文档假设）
+
+很多直觉上"应该存在"的方法实际不在 RenderedTarget 上 —— 它们是 `scratch3_motion.js` / `scratch3_looks.js` / `scratch3_pen/` 等文件里的 block primitive，签名是 `(args, util)` 而非实例方法。
+
+**实测可用的 RenderedTarget 公开方法只有 9 个**：
+
+| 方法 | 用途 |
+|---|---|
+| `setXY(x, y)` | 绝对位置（`force` 参数是内部用） |
+| `setDirection(d)` | 绝对方向（90=右、0=上、-90=左、180=下） |
+| `setVisible(b)` | 显示/隐藏 |
+| `setSize(s)` | 大小（百分比） |
+| `setCostume(idx)` | costume 切换（必须传数字索引，名称查找要自己做） |
+| `goToFront()` / `goToBack()` | 图层（注意不是 `goToLayer`） |
+| `getCustomState(key)` / `setCustomState(key, value)` | 自定义状态存储（base 类的 `_customState[key]`） |
+
+**❌ 不在 RenderedTarget 上的"常识方法"**：`changeX` / `changeY` / `turnRight` / `turnLeft` / `moveSteps` / `goTo` / `glideTo` / `pointTowards` / `say` / `think` / `stopSpeaking` / `sayingText` / `thinkingText` / `bubbleType` / `goToLayer` 等。**遇到这些需求，要么自己计算（用 `setXY` + `setDirection`）+ 读取 `getCustomState('Scratch.looks').text/.type`**，要么**走 block primitive 路径**（见下条）。
+
+### Block Primitive 调用模式（绕过 event listener）
+
+`runtime.getOpcodeFunction(opcode)` 返回**绑定到 packageObject 的函数**，可以直接调用：
+
+```js
+const fn = vm.runtime.getOpcodeFunction('looks_say');
+fn({MESSAGE: text}, {target, runtime: vm.runtime});  // util 对象最少需要 target + runtime
+```
+
+这一路径比 `runtime.emit('SAY', target, type, text)` 更可靠 —— 避免 listener 绑定时机、多个 runtime 实例等边界情况。`actor_say` / `actor_think` / 所有扩展（pen / music / text2speech / translate）的 primitive 都走这条路。
+
+### Scratch VM 角度数学
+
+`pointTowards` 的核心算法（在 actor-loop 中用）：
+
+```js
+// 把 dx, dy 转换为 Scratch 方向（90=右、0=上、180=下）
+const direction = 90 - radToDeg(Math.atan2(dy, dx));
+```
+
+注意 Scratch 的"上"是 0 度，跟一般数学的 90 度相反。`glide` 不在 RenderedTarget 上，需要自实现（用 `setInterval` 推进 `setXY`）。
+
+### 扩展加载的时序陷阱
+
+`vm.extensionManager.loadExtensionURL('pen')` **resolve 不等于 primitive 可用**。它只注册 service，primitive 要通过 `dispatch.call('runtime', '_registerExtensionPrimitives', ...)` **异步**注册到 `runtime._primitives`。
+
+**正确模式**：加载后 `waitForPrimitive` 轮询 `getOpcodeFunction(opcode)` 可见：
+
+```js
+const waitForPrimitive = (vm, extId, opcode, timeoutMs = 2000) =>
+    new Promise((resolve, reject) => {
+        const start = Date.now();
+        const check = () => {
+            const fn = vm.runtime.getOpcodeFunction(opcode);
+            if (fn) return resolve(fn);
+            if (Date.now() - start > timeoutMs) return reject(new Error('timeout'));
+            setTimeout(check, 20);
+        };
+        check();
+    });
+```
+
+否则会出现"扩展激活了但 primitive 找不到"的诡异错误，LLM 翻译后报错信息变成"目前这个项目没有激活画笔扩展"。给 agent 暴露一个 `actor_ensure_extension` 显式等待工具，比让 agent 间接踩坑要好。
+
+### Actor 模式的语言策略
+
+- **System prompt** 跟随 `vm.getLocale()`（与 Programmer 模式一致）
+- **LLM 回复语言**跟随**用户输入消息**的语言，不是 Scratch UI 的语言
+
+三套语言的 system prompt 都明确这条：「**用用户输入消息使用的语言回复**」。Scratch UI 的 locale 只决定你收到哪一版 prompt，不影响回复语言；用户输入语言优先。
+
+### Actor 工具的前缀命名空间
+
+`actor_` 前缀（48 个 actor_ 工具）隔离了与 Programmer 模式 `set_scripts` 等工具的命名空间。两个好处：
+1. 两个模式能并存且互不污染（`runAgent({mode='programmer'|'actor'})` 分发）
+2. 模式切换时缓存断点（cache_control）的语义边界清晰 —— actor tools / programmer tools 分别占一个 cache 段
+
 ### CI（GitHub Actions）
 
 将 `actions/checkout`、`actions/setup-node`、`actions/configure-pages`、`actions/upload-pages-artifact`、`actions/deploy-pages` 保持在 Node.js 24 对应版本。

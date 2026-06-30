@@ -24,7 +24,7 @@ import {
 import {ToolError} from './tool-handlers';
 import {RUNTIME_TOOLS, runtimeDraftingLabel, summarizeActorToolCall} from './runtime-tools';
 import {createRuntimeToolHandlers} from './runtime-handlers';
-import {getRuntimeActorSystemPrompt} from './runtime-system-prompt';
+import {getRuntimeActorSystemPrompt, detectUserLanguage} from './runtime-system-prompt';
 
 const MAX_ITERATIONS = 30;
 const MAX_TOKENS = 16000;
@@ -135,8 +135,11 @@ const runOpenAICompatActorAgent = async ({
     });
     const handlers = createRuntimeToolHandlers(vm);
     const oaiTools = toOpenAITools(RUNTIME_TOOLS);
+    // system prompt 语言优先跟随用户输入消息的语言（通过字符集检测），
+    // 而不是 Scratch locale（Scratch UI 是日语但用户用中文写时 LLM 仍用日语回复的问题）
+    const userLang = detectUserLanguage(userText) || lang;
     const systemMessages = [
-        {role: 'system', content: getRuntimeActorSystemPrompt(lang)}
+        {role: 'system', content: getRuntimeActorSystemPrompt(userLang)}
     ];
 
     apiMessages.push({role: 'user', content: [{type: 'text', text: userText}]});
@@ -346,9 +349,11 @@ export const runActorAgent = async ({
     });
     const handlers = createRuntimeToolHandlers(vm);
 
+    // system prompt 语言优先跟随用户输入消息的语言（通过字符集检测）
+    const userLang = detectUserLanguage(userText) || lang;
     // system + tools 都是固定的 → prompt caching
     const system = [
-        {type: 'text', text: getRuntimeActorSystemPrompt(lang), cache_control: {type: 'ephemeral'}}
+        {type: 'text', text: getRuntimeActorSystemPrompt(userLang), cache_control: {type: 'ephemeral'}}
     ];
     const tools = RUNTIME_TOOLS.map((tool, i) =>
         (i === RUNTIME_TOOLS.length - 1 ? {...tool, cache_control: {type: 'ephemeral'}} : tool)
