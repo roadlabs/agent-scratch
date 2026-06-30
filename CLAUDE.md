@@ -197,32 +197,69 @@ const direction = 90 - radToDeg(Math.atan2(dy, dx));
 
 ### 扩展加载的时序陷阱
 
-`vm.extensionManager.loadExtensionURL('pen')` **resolve 不等于 primitive 可用**。它只注册 service，primitive 要通过 `dispatch.call('runtime', '_registerExtensionPrimitives', ...)` **异步**注册到 `runtime._primitives`。
+`vm.extensionManager.loadExtensionURL('pen')` resolve 时，扩展已经**同步**注册到 `runtime._primitives`（因为 dispatch 对本地服务直接返回 `Promise.resolve(result)`，且 extension-manager.js 的 `_registerExtensionInfo` 内部同步调用 `_registerExtensionPrimitives`）。所以实际上 `waitForPrimitive` 一次轮询就能拿到 —— 但保留 2 秒轮询作为防御性兜底。
 
-**正确模式**：加载后 `waitForPrimitive` 轮询 `getOpcodeFunction(opcode)` 可见：
+### 扩展 opcode 必须带扩展 ID 前缀（关键 bug）
+
+scratch-vm 在注册扩展 primitive 时把 opcode 用 `${extensionId}_${opcode}` 前缀化（runtime.js:1082）：
 
 ```js
-const waitForPrimitive = (vm, extId, opcode, timeoutMs = 2000) =>
-    new Promise((resolve, reject) => {
-        const start = Date.now();
-        const check = () => {
-            const fn = vm.runtime.getOpcodeFunction(opcode);
-            if (fn) return resolve(fn);
-            if (Date.now() - start > timeoutMs) return reject(new Error('timeout'));
-            setTimeout(check, 20);
-        };
-        check();
-    });
+const extendedOpcode = `${categoryInfo.id}_${blockInfo.opcode}`;
+this._primitives[opcode] = convertedBlock.info.func;
 ```
 
-否则会出现"扩展激活了但 primitive 找不到"的诡异错误，LLM 翻译后报错信息变成"目前这个项目没有激活画笔扩展"。给 agent 暴露一个 `actor_ensure_extension` 显式等待工具，比让 agent 间接踩坑要好。
+所以 pen 扩展的 `penDown` 注册到 `runtime._primitives['pen_penDown']` 而不是 `runtime._primitives['penDown']`。
+
+❌ 错误：用裸 opcode 查找 → 永远找不到
+```js
+const fn = vm.runtime.getOpcodeFunction('penDown');  // undefined!
+```
+
+✅ 正确：用带前缀的 extended opcode
+```js
+const extendedOpcode = `${extensionId}_${opcode}`;
+const fn = vm.runtime.getOpcodeFunction(extendedOpcode);
+```
+
+影响所有 4 类扩展工具：`actor_pen_*` / `actor_play_*` / `actor_speak` / `actor_translate` 等。如果不修复，扩展会"已加载"但"primitive 找不到"，agent 会反复重试然后放弃。
+
+### 显式扩展加载工具 `actor_ensure_extension`
+
+给 agent 暴露 `actor_ensure_extension(extension_id)` 工具（接受 `pen` / `music` / `text2speech` / `translate`），让 agent 在用扩展工具**之前**显式加载。比让 agent 间接踩"扩展加载了但 primitive 找不到"的坑要好。也可以让 agent 直接调扩展工具（`callExtensionPrimitive` 内部会自动加载 + 等 primitive），但显式更可调试、错误信息更清晰。
 
 ### Actor 模式的语言策略
 
-- **System prompt** 跟随 `vm.getLocale()`（与 Programmer 模式一致）
-- **LLM 回复语言**跟随**用户输入消息**的语言，不是 Scratch UI 的语言
+- **System prompt** 跟随**用户输入消息的语言**（用 `detectUserLanguage` 字符集检测），**不是** Scratch locale
+- **LLM 回复语言**跟随**用户输入消息**的语言
 
-三套语言的 system prompt 都明确这条：「**用用户输入消息使用的语言回复**」。Scratch UI 的 locale 只决定你收到哪一版 prompt，不影响回复语言；用户输入语言优先。
+三套语言的 system prompt 都明确这条：
+
+```js
+// 字符集检测（runtime-system-prompt.js）
+export const detectUserLanguage = text => {
+    let hasHiraganaKatakana = false, hasHan = false;
+    for (const ch of text) {
+        const code = ch.codePointAt(0);
+        if (code >= 0x3040 && code <= 0x309F) hasHiraganaKatakana = true;  // 平假名
+        else if (code >= 0x30A0 && code <= 0x30FF) hasHiraganaKatakana = true;  // 片假名
+        else if (code >= 0x4E00 && code <= 0x9FFF) hasHan = true;  // CJK 统一汉字
+    }
+    if (hasHiraganaKatakana) return 'ja';
+    if (hasHan) return 'zh';
+    return 'en';
+};
+
+// actor-loop.js 中调用
+const userLang = detectUserLanguage(userText) || lang;  // fallback to Scratch locale
+const system = getRuntimeActorSystemPrompt(userLang);
+```
+
+**绕过模型日语偏向的强化**（实测 deepseek-chat 等模型有内置日语偏向，仅靠"用用户语言"指引不够）：
+
+1. 每版 prompt 开头加 `[OUTPUT LANGUAGE: 简体中文 (zh)]` 显式标记
+2. 把"回复语言"章节提到第二位，用 ⚠️ 强调
+3. 加入明确的判断规则表（汉字-only → 中文；含假名 → 日文；纯 ASCII → 英文）
+4. 明确禁止（"绝对不能用 X 语言除非用户用 X"）
 
 ### Actor 工具的前缀命名空间
 
