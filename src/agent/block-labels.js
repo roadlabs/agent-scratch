@@ -511,6 +511,58 @@ export const findOpcodeByJaName = text => {
     return (key && JA_NAME_TO_OPCODE[key]) || null;
 };
 
+// ---- 中文区块名 → opcode 的逆引き（与 JA 同款机制） ----
+// normalizeJaName 的规则（去除图标引用/菜单/参数/数字/标点）对中文同样适用。
+// 例如 "移动 10 步" → "移动步" → motion_movesteps。
+
+// 模型常写的言い換え（与规范化后的 ZH 标签不一致的表达）
+const ZH_NAME_ALIASES = {
+    '绿旗被点击': 'event_whenflagclicked',
+    '点击绿旗': 'event_whenflagclicked',
+    '绿旗被点击时': 'event_whenflagclicked',
+    '当绿旗被点击': 'event_whenflagclicked',
+    '当按下空格键': 'event_whenkeypressed',
+    '按空格键': 'event_whenkeypressed',
+    '重复执行': 'control_forever',
+    '永远重复': 'control_forever',
+    '一直重复': 'control_forever',
+    '当作为克隆体启动时': 'control_start_as_clone',
+    '作为克隆体启动': 'control_start_as_clone',
+    '当克隆启动': 'control_start_as_clone',
+    '克隆自己': 'control_create_clone_of',
+    '克隆自身': 'control_create_clone_of',
+    '移动步': 'motion_movesteps',
+    '右转度': 'motion_turnright',
+    '左转度': 'motion_turnleft',
+    '碰到边缘就反弹': 'motion_ifonedgebounce',
+    '说': 'looks_say',
+    '思考': 'looks_think',
+    '下一个造型': 'looks_nextcostume',
+    '下一个背景': 'looks_nextbackdrop',
+    '隐藏': 'looks_hide',
+    '显示': 'looks_show'
+};
+
+const ZH_NAME_TO_OPCODE = (() => {
+    const map = {};
+    // 优先注册别名
+    for (const [name, opcode] of Object.entries(ZH_NAME_ALIASES)) {
+        map[normalizeJaName(name)] = opcode;
+    }
+    // 从 ZH 标签自动生成（先到先得）
+    for (const [opcode, label] of Object.entries(ZH)) {
+        const key = normalizeJaName(label);
+        if (key.length >= 2 && !map[key]) map[key] = opcode;
+    }
+    return map;
+})();
+
+// 从类似中文区块名的字符串查找 opcode（无匹配则返回 null）
+export const findOpcodeByZhName = text => {
+    const key = normalizeJaName(text);
+    return (key && ZH_NAME_TO_OPCODE[key]) || null;
+};
+
 // key 是否为 cand 的子序列（保持顺序包含）
 // 例: 「回転方法をにする」⊂「回転方法を左右に反転にする」（允许菜单值的插入）
 const isSubsequence = (key, cand) => {

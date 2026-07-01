@@ -22,7 +22,7 @@ import {
     getModel, AuthError
 } from './agent-loop';
 import {ToolError} from './tool-handlers';
-import {RUNTIME_TOOLS, runtimeDraftingLabel, summarizeActorToolCall} from './runtime-tools';
+import {getRuntimeTools, runtimeDraftingLabel, summarizeActorToolCall} from './runtime-tools';
 import {createRuntimeToolHandlers} from './runtime-handlers';
 import {getRuntimeActorSystemPrompt, detectUserLanguage} from './runtime-system-prompt';
 
@@ -133,8 +133,8 @@ const runOpenAICompatActorAgent = async ({
         maxRetries: 2,
         ...(stripSdkHeaders ? {defaultHeaders: STRIP_STAINLESS_HEADERS} : {})
     });
-    const handlers = createRuntimeToolHandlers(vm);
-    const oaiTools = toOpenAITools(RUNTIME_TOOLS);
+    const handlers = createRuntimeToolHandlers(vm, {lang});
+    const oaiTools = toOpenAITools(getRuntimeTools(lang));
     // system prompt 语言优先跟随用户输入消息的语言（通过字符集检测），
     // 而不是 Scratch locale（Scratch UI 是日语但用户用中文写时 LLM 仍用日语回复的问题）
     const userLang = detectUserLanguage(userText) || lang;
@@ -242,7 +242,11 @@ const runOpenAICompatActorAgent = async ({
             let isError = false;
             try {
                 const handler = handlers[tc.function.name];
-                if (!handler) throw new ToolError(`未知のツール: ${tc.function.name}`);
+                if (!handler) throw new ToolError(
+                    lang === 'zh' ? `未知的工具: ${tc.function.name}` :
+                    lang === 'en' ? `Unknown tool: ${tc.function.name}` :
+                    `未知のツール: ${tc.function.name}`
+                );
                 result = await handler(input);
             } catch (e) {
                 isError = true;
@@ -347,7 +351,7 @@ export const runActorAgent = async ({
         timeout: REQUEST_TIMEOUT_MS,
         maxRetries: 1
     });
-    const handlers = createRuntimeToolHandlers(vm);
+    const handlers = createRuntimeToolHandlers(vm, {lang});
 
     // system prompt 语言优先跟随用户输入消息的语言（通过字符集检测）
     const userLang = detectUserLanguage(userText) || lang;
@@ -355,9 +359,10 @@ export const runActorAgent = async ({
     const system = [
         {type: 'text', text: getRuntimeActorSystemPrompt(userLang), cache_control: {type: 'ephemeral'}}
     ];
-    const tools = RUNTIME_TOOLS.map((tool, i) =>
-        (i === RUNTIME_TOOLS.length - 1 ? {...tool, cache_control: {type: 'ephemeral'}} : tool)
-    );
+    const tools = getRuntimeTools(lang).map((tool, i) => {
+        const last = getRuntimeTools(lang).length - 1;
+        return i === last ? {...tool, cache_control: {type: 'ephemeral'}} : tool;
+    });
 
     apiMessages.push({role: 'user', content: [{type: 'text', text: userText}]});
 
@@ -476,7 +481,11 @@ export const runActorAgent = async ({
             let isError = false;
             try {
                 const handler = handlers[block.name];
-                if (!handler) throw new ToolError(`未知のツール: ${block.name}`);
+                if (!handler) throw new ToolError(
+                    lang === 'zh' ? `未知的工具: ${block.name}` :
+                    lang === 'en' ? `Unknown tool: ${block.name}` :
+                    `未知のツール: ${block.name}`
+                );
                 result = await handler(block.input);
             } catch (e) {
                 isError = true;

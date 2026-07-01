@@ -19,7 +19,16 @@ export const uid = () => Array.from(
     {length: 20}, () => SOUP[Math.floor(Math.random() * SOUP.length)]
 ).join('');
 
-export class BuildError extends Error {}
+// BuildError 不携带本地化文本（避免在 throw 点嵌入日语/中文/英文）；
+// 只携带 errorKey 与参数，由调用方的 handler 在抛出 ToolError 时按 lang 解析。
+// 解析通过 t(key, lang, ...errorArgs) 完成（见 ./error-msgs）。
+export class BuildError extends Error {
+    constructor (errorKey, ...errorArgs) {
+        super(errorKey);
+        this.errorKey = errorKey;
+        this.errorArgs = errorArgs;
+    }
+}
 
 const isBlockDef = v => v !== null && typeof v === 'object' && typeof v.opcode === 'string';
 
@@ -33,13 +42,13 @@ const isBlockDef = v => v !== null && typeof v === 'object' && typeof v.opcode =
  */
 export const buildScripts = (scripts, ctx) => {
     if (!Array.isArray(scripts)) {
-        throw new BuildError('scripts は配列である必要があります');
+        throw new BuildError('scriptsNotArray');
     }
     const blocks = {};
     scripts.forEach((script, i) => {
         const stack = Array.isArray(script) ? script : script.blocks;
         if (!Array.isArray(stack) || stack.length === 0) {
-            throw new BuildError(`scripts[${i}] に blocks 配列がありません`);
+            throw new BuildError('scriptsMissingBlocks', i);
         }
         const topId = buildStack(stack, null, blocks, ctx, `scripts[${i}]`);
         const top = blocks[topId];
@@ -59,12 +68,10 @@ const buildStack = (defs, parentId, blocks, ctx, path) => {
         const block = blocks[id];
         const spec = BLOCK_SPECS[def.opcode];
         if (spec.shape === 'reporter' || spec.shape === 'boolean') {
-            throw new BuildError(
-                `${path}.blocks[${i}]: ${def.opcode} は値ブロックなのでスタックに直接置けません(inputs の中で使ってください)`);
+            throw new BuildError('valueBlockInStack', path, def.opcode);
         }
         if (i > 0 && spec.shape === 'hat') {
-            throw new BuildError(
-                `${path}.blocks[${i}]: ハットブロック ${def.opcode} はスクリプトの先頭にのみ置けます`);
+            throw new BuildError('hatNotAtTop', path, def.opcode);
         }
         if (prevId !== null) {
             blocks[prevId].next = id;
@@ -81,11 +88,11 @@ const buildStack = (defs, parentId, blocks, ctx, path) => {
 // 构建单一区块（+shadow、嵌套区块、substack）并返回 id
 const buildBlock = (def, blocks, ctx, path) => {
     if (!isBlockDef(def)) {
-        throw new BuildError(`${path}: ブロックは {"opcode": ...} 形式のオブジェクトである必要があります`);
+        throw new BuildError('invalidBlockDef', path);
     }
     const spec = BLOCK_SPECS[def.opcode];
     if (!spec) {
-        throw new BuildError(`${path}: 未知のopcode "${def.opcode}" です。利用可能なopcode一覧から選んでください`);
+        throw new BuildError('unknownOpcode', path, def.opcode);
     }
     const id = uid();
     const block = {
@@ -114,10 +121,10 @@ const buildBlock = (def, blocks, ctx, path) => {
     for (const [name, fieldSpec] of Object.entries(spec.fields || {})) {
         const value = givenFields[name] !== undefined ? givenFields[name] : givenInputs[name];
         if (value === undefined || value === null) {
-            throw new BuildError(`${path}: ${def.opcode} には fields.${name} が必要です`);
+            throw new BuildError('fieldRequired', path, def.opcode, name);
         }
         if (typeof value === 'object') {
-            throw new BuildError(`${path}.fields.${name}: フィールドにはブロックを入れられません(文字列を指定してください)`);
+            throw new BuildError('fieldNotBlock', path, name);
         }
         block.fields[name] = buildField(name, fieldSpec, String(value), ctx, `${path}.fields.${name}`);
     }
@@ -160,9 +167,7 @@ const validateChoice = (spec, value, ctx, path, what) => {
     const dynamicList = (spec.dynamic && ctx.dynamicValues && ctx.dynamicValues[spec.dynamic]) || [];
     const allowed = [...(spec.values || []), ...dynamicList];
     if (allowed.includes(String(value))) return;
-    throw new BuildError(
-        `${path}: ${what} に "${value}" は使えません。使える値: ` +
-        allowed.map(v => `"${v}"`).join(', '));
+    throw new BuildError('invalidChoice', path, what, value, allowed);
 };
 
 // 构建一个 input（字面量 shadow / 菜单 shadow / 嵌套区块）
@@ -173,7 +178,7 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
             return {name, block: null, shadow: null};
         }
         if (!isBlockDef(value)) {
-            throw new BuildError(`${path}: 真偽値入力にはブロック({"opcode": ...})が必要です`);
+            throw new BuildError('booleanInputNeedsBlock', path);
         }
         const nestedId = buildReporter(value, parentId, blocks, ctx, path, true);
         return {name, block: nestedId, shadow: null};
@@ -209,7 +214,7 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
     // 广播输入
     if (argType === 'broadcast') {
         if (value === undefined || value === null || isBlockDef(value)) {
-            throw new BuildError(`${path}: ブロードキャスト名(文字列)が必要です`);
+            throw new BuildError('broadcastNameRequired', path);
         }
         const broadcast = ctx.resolveVariable(String(value), 'broadcast_msg');
         const shadowId = uid();
@@ -236,13 +241,13 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
     // 字面量输入（数字・字符串・颜色）
     const literalSpec = LITERAL_SHADOWS[argType];
     if (!literalSpec) {
-        throw new BuildError(`${path}: 不明な引数タイプ ${JSON.stringify(argType)}`);
+        throw new BuildError('unknownArgType', path, JSON.stringify(argType));
     }
     const isNested = isBlockDef(value);
     const shadowValue = isNested || value === undefined || value === null ? '' : String(value);
     if (argType === 'color' && !isNested && shadowValue !== '' &&
         !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(shadowValue)) {
-        throw new BuildError(`${path}: 色は "#rrggbb" 形式で指定してください(例: "#ff0000")`);
+        throw new BuildError('colorFormat', path);
     }
     const shadowId = uid();
     blocks[shadowId] = {
@@ -266,13 +271,13 @@ const buildInput = (name, argType, value, parentId, blocks, ctx, path) => {
 const buildReporter = (def, parentId, blocks, ctx, path, requireBoolean) => {
     const spec = BLOCK_SPECS[def.opcode];
     if (!spec) {
-        throw new BuildError(`${path}: 未知のopcode "${def.opcode}" です`);
+        throw new BuildError('unknownOpcode', path, def.opcode);
     }
     if (spec.shape !== 'reporter' && spec.shape !== 'boolean') {
-        throw new BuildError(`${path}: ${def.opcode} は値ブロックではないので入力に使えません`);
+        throw new BuildError('notValueBlock', path, def.opcode);
     }
     if (requireBoolean && spec.shape !== 'boolean') {
-        throw new BuildError(`${path}: 真偽値入力には六角形(boolean)ブロックが必要です(${def.opcode} は不可)`);
+        throw new BuildError('booleanInputNeedsBooleanBlock', path, def.opcode);
     }
     const id = buildBlock(def, blocks, ctx, path);
     blocks[id].parent = parentId;

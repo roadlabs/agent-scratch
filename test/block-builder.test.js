@@ -84,32 +84,49 @@ assert.strictEqual(rtBlocks[2].substack[0].opcode, 'looks_say');
 assert.strictEqual(rtBlocks[2].substack2.length, 2);
 console.log('test3 OK: DSL逆変換');
 
-// --- テスト4: エラー検出 ---
-const expectError = (scripts, pattern, label) => {
+// --- テスト4: エラー検出（BuildError は symbolic errorKey + args を運ぶ） ---
+// BuildError.message は errorKey 文字列そのもの（旧テストの substring 検査は通用しなくなった）。
+// 各 site に対し期待 errorKey を明示的に検証する。
+const expectErrorKey = (scripts, expectedKey, label) => {
     try {
         buildScripts(scripts, {resolveVariable});
         assert.fail(`${label}: エラーになるべき`);
     } catch (e) {
-        assert.ok(e.message.includes(pattern), `${label}: ${e.message}`);
+        assert.strictEqual(e.errorKey, expectedKey, `${label}: errorKey が一致 (got ${e.errorKey})`);
     }
 };
-expectError([{blocks: [{opcode: 'motion_movestepsss'}]}], '未知のopcode', '未知opcode');
-expectError([{blocks: [{opcode: 'operator_add'}]}], '値ブロック', 'reporterをスタックに');
-expectError(
+expectErrorKey([{blocks: [{opcode: 'motion_movestepsss'}]}], 'unknownOpcode', '未知opcode');
+expectErrorKey([{blocks: [{opcode: 'operator_add'}]}], 'valueBlockInStack', 'reporterをスタックに');
+expectErrorKey(
     [{blocks: [{opcode: 'control_if', inputs: {CONDITION: {opcode: 'motion_xposition'}}, substack: []}]}],
-    '六角形', 'boolean入力にreporter');
-expectError(
+    'booleanInputNeedsBooleanBlock', 'boolean入力にreporter');
+expectErrorKey(
     [{blocks: [{opcode: 'motion_movesteps'}, {opcode: 'event_whenflagclicked'}]}],
-    'ハットブロック', 'hatが途中');
-console.log('test4 OK: バリデーションエラー');
+    'hatNotAtTop', 'hatが途中');
+expectErrorKey([{x: 1}], 'scriptsMissingBlocks', 'blocks 配列なし');
+expectErrorKey([{blocks: [{opcode: 'event_whenkeypressed'}]}], 'fieldRequired', 'field null');
+expectErrorKey('not-array', 'scriptsNotArray', 'scripts 配列でない');
+expectErrorKey(
+    [{blocks: [{opcode: 'control_if', inputs: {CONDITION: 'true'}, substack: []}]}],
+    'booleanInputNeedsBlock', 'boolean に文字列'
+);
+expectErrorKey(
+    [{blocks: [{opcode: 'event_broadcast', inputs: {BROADCAST_INPUT: {opcode: 'looks_say'}}}]}],
+    'broadcastNameRequired', 'broadcast 名でなくブロック'
+);
+expectErrorKey(
+    [{blocks: [{opcode: 'event_broadcast', inputs: {BROADCAST_INPUT: null}}]}],
+    'broadcastNameRequired', 'broadcast null'
+);
+console.log('test4 OK: バリデーションエラー(errorKey 検証)');
 
 // --- テスト5: メニュー/フィールド値の検証 ---
-expectError(
+expectErrorKey(
     [{blocks: [{opcode: 'event_whenkeypressed', fields: {KEY_OPTION: 'スペース'}}]}],
-    '使えません', '不正なキー名');
-expectError(
+    'invalidChoice', '不正なキー名');
+expectErrorKey(
     [{blocks: [{opcode: 'control_stop', fields: {STOP_OPTION: 'stop all'}}]}],
-    '使えません', '不正なSTOP_OPTION');
+    'invalidChoice', '不正なSTOP_OPTION');
 // dynamic付きメニューはVM情報(dynamicValues)が無ければ検証スキップ(スプライト名かもしれないため)
 buildScripts([{blocks: [{opcode: 'event_whenflagclicked'}, {opcode: 'motion_goto', inputs: {TO: 'random'}}]}], {resolveVariable});
 // 正しい値は通る
@@ -130,24 +147,37 @@ try {
     buildScripts([{blocks: [{opcode: 'event_whenflagclicked'}, {opcode: 'looks_switchcostumeto', inputs: {COSTUME: 'costume99'}}]}], dynCtx);
     assert.fail('実在しないコスチュームはエラーになるべき');
 } catch (e) {
-    assert.ok(e.message.includes('costume1'), '許可値一覧つきエラー: ' + e.message);
+    assert.strictEqual(e.errorKey, 'invalidChoice', 'invalidChoice: ' + e.message);
+    // 許可値（costume1）が errorArgs に含まれている
+    assert.ok(e.errorArgs.some(a => Array.isArray(a) && a.includes('costume1')),
+        'errorArgs に許可値一覧: ' + JSON.stringify(e.errorArgs));
 }
 try {
     buildScripts([{blocks: [{opcode: 'event_whenflagclicked'}, {opcode: 'motion_goto', inputs: {TO: 'random'}}]}], dynCtx);
     assert.fail('dynamicValuesありなら不正なgoto先はエラーになるべき');
 } catch (e) {
-    assert.ok(e.message.includes('使えません'), e.message);
+    assert.strictEqual(e.errorKey, 'invalidChoice');
 }
 console.log('test5 OK: メニュー/フィールド値の検証(静的+動的)');
 
 // --- テスト6: 色形式の検証 ---
-expectError(
+expectErrorKey(
     [{blocks: [{opcode: 'event_whenflagclicked'}, {opcode: 'pen_setPenColorToColor', inputs: {COLOR: 'red'}}]}],
-    '#rrggbb', '色名はエラー');
+    'colorFormat', '色名はエラー');
 buildScripts([{blocks: [
     {opcode: 'event_whenflagclicked'},
     {opcode: 'pen_setPenColorToColor', inputs: {COLOR: '#ff0000'}}
 ]}], {resolveVariable});
 console.log('test6 OK: 色形式の検証');
+
+// --- テスト7: BuildError.errorKey + errorArgs 完整性 ---
+// BuildError インスタンス化テスト（直接 throw せずに new して検証）
+import {BuildError} from '../src/agent/block-builder';
+const be = new BuildError('unknownOpcode', 'p.x', 'fake_op');
+assert.strictEqual(be.errorKey, 'unknownOpcode');
+assert.deepStrictEqual(be.errorArgs, ['p.x', 'fake_op']);
+// errorKey を message にも入れる（throw 後のデバッグ用フォールバック）
+assert.strictEqual(be.message, 'unknownOpcode');
+console.log('test7 OK: BuildError 構造');
 
 console.log('ALL TESTS PASSED');

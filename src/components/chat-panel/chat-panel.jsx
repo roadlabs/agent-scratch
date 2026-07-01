@@ -2,16 +2,37 @@ import React, {useEffect, useRef, useState} from 'react';
 import scratchblocks from 'scratchblocks';
 import jaLocale from 'scratchblocks/locales/ja.json';
 import jaHiraLocale from 'scratchblocks/locales/ja-Hira.json';
-import {BLOCK_LABELS, getBlockLabel, findOpcodeByJaName, isRedundantJaAnnotation} from '../../agent/block-labels.js';
+import zhCnLocale from 'scratchblocks/locales/zh-cn.json';
+import {BLOCK_LABELS, getBlockLabel, findOpcodeByJaName, findOpcodeByZhName, isRedundantJaAnnotation} from '../../agent/block-labels.js';
 import {isDeepSeekModel, isOpenAIModel, isGeminiModel} from '../../agent/agent-loop';
 import {STRINGS, SUGGESTIONS_BY_LANG, draftingChars, pricingLabel} from '../../i18n';
 import './chat-panel.css';
 
-// 注册日语区域设置
-scratchblocks.loadLanguages({'ja': jaLocale, 'ja-Hira': jaHiraLocale});
+// 注册已支持语言的区域设置（scratchblocks 用以决定 token 颜色/形状）
+// zh-tw 暂不注册：覆盖率与 zh-cn 接近，繁中用户走 en fallback 即可（保持简洁）
+scratchblocks.loadLanguages({'ja': jaLocale, 'ja-Hira': jaHiraLocale, 'zh-cn': zhCnLocale});
 
-// 根据 Scratch 的语言(ja|en)决定传递给 scratchblocks 的 languages
-const getSbLanguages = lang => (lang === 'ja' ? ['ja', 'en'] : ['en']);
+// 根据语言决定传递给 scratchblocks 的 languages（fallback chain）
+// - ja: 先 ja，再 en（覆盖未翻译 token）
+// - zh: 先 zh-cn，再 en
+// - 其他（含 en）: 仅 en
+const getSbLanguages = lang => {
+    if (lang === 'ja') return ['ja', 'en'];
+    if (lang === 'zh') return ['zh-cn', 'en'];
+    return ['en'];
+};
+
+// 用于 getBlockLabel 的 scratchblocks locale 选择（必须是 loadLanguages 注册过的 key）
+const getSbBlockLang = lang => {
+    if (lang === 'ja') return 'ja';
+    if (lang === 'zh') return 'zh-cn';
+    return 'en';
+};
+
+// 多语言区块名 → opcode 的反向查找。
+// 依次尝试 JA → ZH → null。
+// ZH 走 normalizeJaName 的同样规则（中文也用同一规范化去除参数/菜单值/标点）。
+const resolveOpcodeFromText = text => findOpcodeByJaName(text) || findOpcodeByZhName(text) || null;
 
 // 将 opcode 转换为 scratchblocks SVG 的组件
 //
@@ -32,8 +53,8 @@ const OPCODE_RE = new RegExp(
 
 const BlockImage = ({opcode, keyStr, lang = 'ja'}) => {
     const ref = useRef(null);
-    // scratchblocks 的区域设置在 ja 时为日语，其他为英语标签
-    const sbLang = lang === 'ja' ? 'ja' : 'en';
+    // scratchblocks locale: ja 用 ja, zh 用 zh-cn, 其他用 en
+    const sbLang = getSbBlockLang(lang);
     const label = getBlockLabel(opcode, sbLang);
 
     useEffect(() => {
@@ -76,7 +97,7 @@ const renderJaQuotedBlocks = (text, keyPrefix, lang) => {
     let match;
     JA_QUOTED_RE.lastIndex = 0;
     while ((match = JA_QUOTED_RE.exec(text)) !== null) {
-        const opcode = findOpcodeByJaName(match[1]);
+        const opcode = resolveOpcodeFromText(match[1]);
         if (!opcode) continue;
         if (match.index > last) parts.push(text.slice(last, match.index));
         parts.push(<BlockImage key={`${keyPrefix}-ja-${match.index}`} opcode={opcode} keyStr={`${keyPrefix}-ja-${match.index}`} lang={lang} />);

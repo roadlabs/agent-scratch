@@ -14,12 +14,16 @@
 //   - 本文件对纯 RenderedTarget 公开 API 的操作（移动/旋转/外观/克隆）直接调用；对
 //     primitive 操作（画笔/音乐/朗读/翻译/气泡）通过 runtime.getOpcodeFunction 拿到
 //     绑定函数 + 构造最小 util 对象直接调用，绕过 emit event 的脆弱路径。
+//
+// 国际化：所有 ToolError 通过 error-msgs 的 t() 解析。lang 由 createRuntimeToolHandlers
+// 注入，从 runAgent({lang}) 透传。
 
 import {createToolHandlers, ToolError} from './tool-handlers';
+import {t as errT} from './error-msgs';
 
 // 通过 name 或 id 查找目标（角色/舞台）。
 // 与 tool-handlers.js:50 同款（不导出故在此复制）。
-const findTarget = (vm, nameOrId) => {
+const findTarget = (vm, nameOrId, lang) => {
     if (!nameOrId || /^(stage|ステージ)$/i.test(nameOrId)) {
         const stage = vm.runtime.getTargetForStage();
         if (stage) return stage;
@@ -31,7 +35,7 @@ const findTarget = (vm, nameOrId) => {
     );
     if (!byName) {
         const names = vm.runtime.targets.filter(t => t.isOriginal).map(t => t.getName());
-        throw new ToolError(`ターゲット "${nameOrId}" が見つかりません。存在するターゲット: ${names.join(', ')}`);
+        throw new ToolError(errT('targetNotFound', lang, nameOrId, names));
     }
     return byName;
 };
@@ -100,30 +104,30 @@ const degToRad = d => d * Math.PI / 180;
 const radToDeg = r => r * 180 / Math.PI;
 
 // 解决 go_to / point_towards 的 destination 参数 → RenderedTarget / 坐标 / mouse-pointer
-const resolveDestination = (vm, input) => {
+const resolveDestination = (vm, input, lang) => {
     if (input === 'mouse-pointer' || input === '_mouse_') {
         const mouse = vm.runtime.ioDevices && vm.runtime.ioDevices.mouse;
-        if (!mouse) throw new ToolError('マウス位置を取得できません');
+        if (!mouse) throw new ToolError(errT('mousePositionUnavailable', lang));
         const x = typeof mouse.getScratchX === 'function' ? mouse.getScratchX() : null;
         const y = typeof mouse.getScratchY === 'function' ? mouse.getScratchY() : null;
-        if (x === null || y === null) throw new ToolError('マウス位置を取得できません');
+        if (x === null || y === null) throw new ToolError(errT('mousePositionUnavailable', lang));
         return {x, y};
     }
-    if (typeof input === 'string') return findTarget(vm, input);
+    if (typeof input === 'string') return findTarget(vm, input, lang);
     if (typeof input === 'object' && input !== null) {
         if (input.x !== undefined && input.y !== undefined) {
             return {x: input.x, y: input.y};
         }
-        if (input.sprite) return findTarget(vm, input.sprite);
+        if (input.sprite) return findTarget(vm, input.sprite, lang);
     }
-    throw new ToolError('destination の形式が無効です');
+    throw new ToolError(errT('invalidDestination', lang));
 };
 
 // 通用：把目的地归一化为 {x, y}
-const destToXY = d => {
+const destToXY = (d, lang) => {
     if (typeof d.x === 'number' && typeof d.y === 'number') return d;
     if (d.isStage || d.isOriginal) return {x: d.x, y: d.y};
-    throw new ToolError('座標を取得できません');
+    throw new ToolError(errT('coordinatesUnavailable', lang));
 };
 
 // 启动气泡显示。
@@ -160,7 +164,7 @@ const emitSayThink = (vm, target, type, text) => {
 // 等待 primitive 注册完成。
 // loadExtensionURL 解析时，primitive 还没通过 dispatch.call 异步注册到
 // runtime._primitives，需要轮询 getOpcodeFunction 直到可见。
-const waitForPrimitive = (vm, extensionId, opcode, timeoutMs = 2000) =>
+const waitForPrimitive = (vm, extensionId, opcode, lang, timeoutMs = 2000) =>
     new Promise((resolve, reject) => {
         const start = Date.now();
         const check = () => {
@@ -168,7 +172,7 @@ const waitForPrimitive = (vm, extensionId, opcode, timeoutMs = 2000) =>
             if (fn) return resolve(fn);
             if (Date.now() - start > timeoutMs) {
                 return reject(new ToolError(
-                    `拡張機能 "${extensionId}" の primitive "${opcode}" が登録されませんでした（タイムアウト）`
+                    errT('extensionPrimitiveTimeout', lang, extensionId, opcode)
                 ));
             }
             setTimeout(check, 20);
@@ -182,15 +186,15 @@ const waitForPrimitive = (vm, extensionId, opcode, timeoutMs = 2000) =>
 // （参考 runtime.js:1082 `extendedOpcode = ${categoryInfo.id}_${blockInfo.opcode}`），
 // 所以 primitive 注册到 runtime._primitives 时的 key 是带前缀的（'pen_penDown'），
 // 不能用裸 opcode（'penDown'）查找。
-const callExtensionPrimitive = async (vm, extensionId, opcode, args, target) => {
+const callExtensionPrimitive = async (vm, extensionId, opcode, args, target, lang) => {
     if (!vm.extensionManager) {
-        throw new ToolError('extensionManager が利用できません');
+        throw new ToolError(errT('extensionManagerUnavailable', lang));
     }
     if (!vm.extensionManager.isExtensionLoaded(extensionId)) {
         await vm.extensionManager.loadExtensionURL(extensionId);
     }
     const extendedOpcode = `${extensionId}_${opcode}`;
-    const fn = await waitForPrimitive(vm, extensionId, extendedOpcode);
+    const fn = await waitForPrimitive(vm, extensionId, extendedOpcode, lang);
     return await fn(args, {target, runtime: vm.runtime});
 };
 
@@ -211,15 +215,15 @@ const clearSayThink = (vm, target) => {
     emitSayThink(vm, target, 'say', '');
 };
 
-export const createRuntimeToolHandlers = vm => {
+export const createRuntimeToolHandlers = (vm, {lang = 'ja'} = {}) => {
     // 资产工具复用程序员模式的处理器（blocksEnabled=false 防御性强制）
-    const projectHandlers = createToolHandlers(vm, {blocksEnabled: false});
+    const projectHandlers = createToolHandlers(vm, {blocksEnabled: false, lang});
 
     return {
         // ── 観察 ────────────────────────────────────────────────
         actor_get_state: ({target} = {}) => {
             if (target) {
-                const t = findTarget(vm, target);
+                const t = findTarget(vm, target, lang);
                 return {state: targetRuntimeSummary(t)};
             }
             return {state: allTargetsSummary(vm)};
@@ -235,43 +239,43 @@ export const createRuntimeToolHandlers = vm => {
 
         // ── 原子動作（書き込むたびに post-state を返す） ─────────
         actor_move: ({target, dx, dy}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは移動できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotMove', lang));
             t.setXY(t.x + dx, t.y + dy);
             return withStateEcho(t, `move(${dx},${dy})`);
         },
 
         actor_turn: ({target, degrees}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは回転できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotTurn', lang));
             t.setDirection(t.direction + degrees);
             return withStateEcho(t, `turn(${degrees})`);
         },
 
         actor_set_position: ({target, x, y}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは位置を設定できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetPosition', lang));
             t.setXY(x, y);
             return withStateEcho(t, `set_position(${x},${y})`);
         },
 
         actor_set_direction: ({target, direction}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは向きを設定できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetDirection', lang));
             t.setDirection(direction);
             return withStateEcho(t, `set_direction(${direction})`);
         },
 
         actor_set_size: ({target, size}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージはサイズを設定できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetSize', lang));
             t.setSize(size);
             return withStateEcho(t, `set_size(${size})`);
         },
 
         actor_set_costume: ({target, costume}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージのコスチューム切替は actor_add_backdrop を使ってください');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetCostume', lang));
             let success = false;
             if (typeof costume === 'number') {
                 success = t.setCostume(costume);
@@ -280,47 +284,47 @@ export const createRuntimeToolHandlers = vm => {
                 const idx = costumes.findIndex(c => c.name === costume);
                 if (idx < 0) {
                     throw new ToolError(
-                        `コスチューム "${costume}" が見つかりません。候補: ${costumes.map(c => c.name).join(', ')}`
+                        errT('runtimeCostumeNotFound', lang, costume, costumes.map(c => c.name))
                     );
                 }
                 success = t.setCostume(idx);
             }
-            if (!success) throw new ToolError(`コスチューム "${costume}" の設定に失敗しました`);
+            if (!success) throw new ToolError(errT('costumeSetFailed', lang, costume));
             return withStateEcho(t, `set_costume(${costume})`);
         },
 
         actor_set_visible: ({target, visible}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージの表示切替はできません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetVisible', lang));
             t.setVisible(visible);
             return withStateEcho(t, `set_visible(${visible})`);
         },
 
         actor_set_layer: ({target, layer}) => {
-            const t = findTarget(vm, target);
+            const t = findTarget(vm, target, lang);
             if (layer === 'front') t.goToFront();
             else if (layer === 'back') t.goToBack();
-            else throw new ToolError('layer は "front" または "back" です');
+            else throw new ToolError(errT('invalidLayer', lang));
             return withStateEcho(t, `set_layer(${layer})`);
         },
 
         actor_say: ({target, text}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは speak できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSpeak', lang));
             emitSayThink(vm, t, 'say', text);
             return withStateEcho(t, `say("${text}")`);
         },
 
         actor_think: ({target, text}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは think できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotThink', lang));
             emitSayThink(vm, t, 'think', text);
             return withStateEcho(t, `think("${text}")`);
         },
 
         actor_stop_speaking: ({target}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは吹き出しを持ちません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageHasNoBubble', lang));
             clearSayThink(vm, t);
             return withStateEcho(t, 'stop_speaking');
         },
@@ -328,8 +332,8 @@ export const createRuntimeToolHandlers = vm => {
         // glide 是 timer-based animation（scratch3_motion.js 的 primitive 用 util.yield() 调度）。
         // 我们没有等价机制，改用 setInterval 按帧推进位置，模拟 scratch3_motion.glide 的算法。
         actor_glide: ({target, x, y, secs}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは滑行できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotGlide', lang));
             const startX = t.x;
             const startY = t.y;
             const duration = Math.max(0, secs) * 1000;
@@ -357,10 +361,10 @@ export const createRuntimeToolHandlers = vm => {
         // scratch3_motion.pointTowards 的核心算法：
         // direction = 90 - radToDeg(atan2(targetY - y, targetX - x))
         actor_point_towards: ({target, towards}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは向きを変えられません');
-            const dest = resolveDestination(vm, towards);
-            const targetXY = destToXY(dest);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotPoint', lang));
+            const dest = resolveDestination(vm, towards, lang);
+            const targetXY = destToXY(dest, lang);
             const dx = targetXY.x - t.x;
             const dy = targetXY.y - t.y;
             const direction = 90 - radToDeg(Math.atan2(dy, dx));
@@ -369,10 +373,10 @@ export const createRuntimeToolHandlers = vm => {
         },
 
         actor_go_to: ({target, destination}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは移動できません');
-            const dest = resolveDestination(vm, destination);
-            const targetXY = destToXY(dest);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotMove', lang));
+            const dest = resolveDestination(vm, destination, lang);
+            const targetXY = destToXY(dest, lang);
             t.setXY(targetXY.x, targetXY.y);
             return withStateEcho(t, `go_to(${JSON.stringify(destination)})`);
         },
@@ -394,8 +398,8 @@ export const createRuntimeToolHandlers = vm => {
         },
 
         actor_clone_sprite: async ({target}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは複製できません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotClone', lang));
             const cloned = await vm.duplicateSprite(t.id);
             return {
                 ok: true,
@@ -433,137 +437,137 @@ export const createRuntimeToolHandlers = vm => {
 
         // ── 画筆（pen 拡張） ────────────────────────────────────
         actor_pen_down: async ({target}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'penDown', {}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
+            await callExtensionPrimitive(vm, 'pen', 'penDown', {}, t, lang);
             return withStateEcho(t, 'pen_down');
         },
         actor_pen_up: async ({target}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'penUp', {}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
+            await callExtensionPrimitive(vm, 'pen', 'penUp', {}, t, lang);
             return withStateEcho(t, 'pen_up');
         },
         actor_pen_clear: async () => {
             // clear はどの target にも属さない（ステージ全体）が、primitive は util を要求するので
             // ステージを渡して呼び出す。runtime の _getPenLayerID が -1 を返す時は何もしない。
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'pen', 'clear', {}, stage);
+            await callExtensionPrimitive(vm, 'pen', 'clear', {}, stage, lang);
             return {ok: true, action: 'pen_clear'};
         },
         actor_pen_stamp: async ({target}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはスタンプを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'stamp', {}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotStamp', lang));
+            await callExtensionPrimitive(vm, 'pen', 'stamp', {}, t, lang);
             return withStateEcho(t, 'pen_stamp');
         },
         actor_pen_set_color: async ({target, color}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
             // 数字（0xRRGGBB）でも '#rrggbb' 文字列でも受け付ける
             let colorInt;
             if (typeof color === 'number') colorInt = color;
             else if (typeof color === 'string') {
                 colorInt = hexColorToInt(color);
-                if (colorInt === null) throw new ToolError(`color は "#rrggbb" 形式または 0xRRGGBB 整数です（入力: ${color}）`);
+                if (colorInt === null) throw new ToolError(errT('invalidColorFormat', lang, color));
             } else {
-                throw new ToolError('color は "#rrggbb" 文字列または 0xRRGGBB 整数で指定してください');
+                throw new ToolError(errT('invalidColorInput', lang));
             }
-            await callExtensionPrimitive(vm, 'pen', 'setPenColorToColor', {COLOR: colorInt}, t);
+            await callExtensionPrimitive(vm, 'pen', 'setPenColorToColor', {COLOR: colorInt}, t, lang);
             return withStateEcho(t, `pen_set_color(#${colorInt.toString(16).padStart(6, '0')})`);
         },
         actor_pen_change_color_param: async ({target, param, value}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
             if (!PEN_COLOR_PARAMS.has(param)) {
-                throw new ToolError(`param は ${[...PEN_COLOR_PARAMS].join(' / ')} のいずれかです`);
+                throw new ToolError(errT('invalidColorParam', lang, [...PEN_COLOR_PARAMS]));
             }
-            await callExtensionPrimitive(vm, 'pen', 'changePenColorParamBy', {COLOR_PARAM: param, VALUE: value}, t);
+            await callExtensionPrimitive(vm, 'pen', 'changePenColorParamBy', {COLOR_PARAM: param, VALUE: value}, t, lang);
             return withStateEcho(t, `pen_change_${param}(${value})`);
         },
         actor_pen_set_color_param: async ({target, param, value}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
             if (!PEN_COLOR_PARAMS.has(param)) {
-                throw new ToolError(`param は ${[...PEN_COLOR_PARAMS].join(' / ')} のいずれかです`);
+                throw new ToolError(errT('invalidColorParam', lang, [...PEN_COLOR_PARAMS]));
             }
-            await callExtensionPrimitive(vm, 'pen', 'setPenColorParamTo', {COLOR_PARAM: param, VALUE: value}, t);
+            await callExtensionPrimitive(vm, 'pen', 'setPenColorParamTo', {COLOR_PARAM: param, VALUE: value}, t, lang);
             return withStateEcho(t, `pen_set_${param}(${value})`);
         },
         actor_pen_set_size: async ({target, size}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'setPenSizeTo', {SIZE: size}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
+            await callExtensionPrimitive(vm, 'pen', 'setPenSizeTo', {SIZE: size}, t, lang);
             return withStateEcho(t, `pen_set_size(${size})`);
         },
         actor_pen_change_size: async ({target, size}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'changePenSizeBy', {SIZE: size}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
+            await callExtensionPrimitive(vm, 'pen', 'changePenSizeBy', {SIZE: size}, t, lang);
             return withStateEcho(t, `pen_change_size(${size})`);
         },
         actor_pen_set_shade: async ({target, shade}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'setPenShadeToNumber', {SHADE: shade}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
+            await callExtensionPrimitive(vm, 'pen', 'setPenShadeToNumber', {SHADE: shade}, t, lang);
             return withStateEcho(t, `pen_set_shade(${shade})`);
         },
         actor_pen_change_shade: async ({target, shade}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージにはペンを使えません');
-            await callExtensionPrimitive(vm, 'pen', 'changePenShadeBy', {SHADE: shade}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotUsePen', lang));
+            await callExtensionPrimitive(vm, 'pen', 'changePenShadeBy', {SHADE: shade}, t, lang);
             return withStateEcho(t, `pen_change_shade(${shade})`);
         },
 
         // ── 音楽（music 拡張） ──────────────────────────────────
         actor_play_note: async ({note, beats}) => {
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'music', 'playNoteForBeats', {NOTE: note, BEATS: beats}, stage);
+            await callExtensionPrimitive(vm, 'music', 'playNoteForBeats', {NOTE: note, BEATS: beats}, stage, lang);
             return {ok: true, action: `play_note(${note}, ${beats})`};
         },
         actor_play_drum: async ({drum, beats}) => {
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'music', 'playDrumForBeats', {DRUM: drum, BEATS: beats}, stage);
+            await callExtensionPrimitive(vm, 'music', 'playDrumForBeats', {DRUM: drum, BEATS: beats}, stage, lang);
             return {ok: true, action: `play_drum(${drum}, ${beats})`};
         },
         actor_rest_for_beats: async ({beats}) => {
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'music', 'restForBeats', {BEATS: beats}, stage);
+            await callExtensionPrimitive(vm, 'music', 'restForBeats', {BEATS: beats}, stage, lang);
             return {ok: true, action: `rest(${beats})`};
         },
         actor_set_instrument: async ({instrument}) => {
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'music', 'setInstrument', {INSTRUMENT: instrument}, stage);
+            await callExtensionPrimitive(vm, 'music', 'setInstrument', {INSTRUMENT: instrument}, stage, lang);
             return {ok: true, action: `set_instrument(${instrument})`};
         },
         actor_set_tempo: async ({tempo}) => {
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'music', 'setTempo', {TEMPO: tempo}, stage);
+            await callExtensionPrimitive(vm, 'music', 'setTempo', {TEMPO: tempo}, stage, lang);
             return {ok: true, action: `set_tempo(${tempo})`};
         },
         actor_change_tempo: async ({tempo}) => {
             const stage = vm.runtime.getTargetForStage();
-            await callExtensionPrimitive(vm, 'music', 'changeTempo', {TEMPO: tempo}, stage);
+            await callExtensionPrimitive(vm, 'music', 'changeTempo', {TEMPO: tempo}, stage, lang);
             return {ok: true, action: `change_tempo(${tempo})`};
         },
 
         // ── テキスト読み上げ（text2speech 拡張） ─────────────────
         actor_speak: async ({target, words}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは speak できません');
-            await callExtensionPrimitive(vm, 'text2speech', 'speakAndWait', {WORDS: words}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSpeak', lang));
+            await callExtensionPrimitive(vm, 'text2speech', 'speakAndWait', {WORDS: words}, t, lang);
             return withStateEcho(t, `speak("${words}")`);
         },
         actor_set_voice: async ({target, voice}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは音声設定できません');
-            await callExtensionPrimitive(vm, 'text2speech', 'setVoice', {VOICE: voice}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetVoice', lang));
+            await callExtensionPrimitive(vm, 'text2speech', 'setVoice', {VOICE: voice}, t, lang);
             return withStateEcho(t, `set_voice(${voice})`);
         },
         actor_set_speech_language: async ({target, language}) => {
-            const t = findTarget(vm, target);
-            if (t.isStage) throw new ToolError('ステージは言語設定できません');
-            await callExtensionPrimitive(vm, 'text2speech', 'setLanguage', {LANGUAGE: language}, t);
+            const t = findTarget(vm, target, lang);
+            if (t.isStage) throw new ToolError(errT('stageCannotSetSpeechLanguage', lang));
+            await callExtensionPrimitive(vm, 'text2speech', 'setLanguage', {LANGUAGE: language}, t, lang);
             return withStateEcho(t, `set_speech_language(${language})`);
         },
 
@@ -571,16 +575,16 @@ export const createRuntimeToolHandlers = vm => {
         actor_translate: async ({words, language}) => {
             const stage = vm.runtime.getTargetForStage();
             const result = await callExtensionPrimitive(
-                vm, 'translate', 'getTranslate', {WORDS: words, LANGUAGE: language}, stage
+                vm, 'translate', 'getTranslate', {WORDS: words, LANGUAGE: language}, stage, lang
             );
             return {ok: true, action: `translate(${language})`, original: words, translated: result};
         },
         actor_get_viewer_language: async () => {
             const stage = vm.runtime.getTargetForStage();
-            const lang = await callExtensionPrimitive(
-                vm, 'translate', 'getViewerLanguage', {}, stage
+            const viewerLang = await callExtensionPrimitive(
+                vm, 'translate', 'getViewerLanguage', {}, stage, lang
             );
-            return {ok: true, language: lang};
+            return {ok: true, language: viewerLang};
         },
 
         // ── 拡張機能の明示的有効化 ────────────────────────────────
@@ -589,10 +593,10 @@ export const createRuntimeToolHandlers = vm => {
         actor_ensure_extension: async ({extension_id}) => {
             const KNOWN = ['pen', 'music', 'text2speech', 'translate'];
             if (!KNOWN.includes(extension_id)) {
-                throw new ToolError(`extension_id は ${KNOWN.join(' / ')} のいずれかです（入力: ${extension_id}）`);
+                throw new ToolError(errT('invalidExtensionId', lang, extension_id, KNOWN));
             }
             if (!vm.extensionManager) {
-                throw new ToolError('extensionManager が利用できません');
+                throw new ToolError(errT('extensionManagerUnavailable', lang));
             }
             if (vm.extensionManager.isExtensionLoaded(extension_id)) {
                 return {ok: true, extension_id, already_loaded: true};
@@ -604,7 +608,7 @@ export const createRuntimeToolHandlers = vm => {
                 ok: true,
                 extension_id,
                 loaded: true,
-                hint: `${extension_id} 拡張が有効になりました。関連するツールを呼び出せます。`
+                hint: errT('extensionReadyHint', lang, extension_id)
             };
         }
     };

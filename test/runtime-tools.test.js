@@ -5,11 +5,14 @@
 /* eslint-disable no-console */
 import assert from 'assert';
 import {
-    RUNTIME_TOOLS,
+    getRuntimeTools,
     RUNTIME_TOOL_NAMES,
     runtimeDraftingLabel,
     summarizeActorToolCall
 } from '../src/agent/runtime-tools';
+
+// テスト用: 構造は lang によらず同じなので ja を使う
+const RUNTIME_TOOLS = getRuntimeTools('ja');
 
 // --- 工具集合的完整性 ---
 const expectedNames = [
@@ -121,5 +124,30 @@ assert.ok(summarizeActorToolCall('actor_move', {target: 'Sprite1', dx: 10, dy: 0
 assert.ok(summarizeActorToolCall('actor_set_position', {target: 'Sprite1', x: 100, y: 50}, 'zh').includes('100'),
     'zh actor_set_position 摘要应包含坐标');
 console.log('test7 OK: summarizeActorToolCall 三语言包含关键信息');
+
+// --- getRuntimeTools 三语言切替（actor_move / actor_say / actor_turn 三个代表 tool） ---
+const rJa = getRuntimeTools('ja');
+const rEn = getRuntimeTools('en');
+const rZh = getRuntimeTools('zh');
+for (const name of ['actor_move', 'actor_say', 'actor_turn']) {
+    const jaTool = rJa.find(t => t.name === name);
+    const enTool = rEn.find(t => t.name === name);
+    const zhTool = rZh.find(t => t.name === name);
+    assert.ok(jaTool && enTool && zhTool, `${name} 存在于三 lang`);
+    assert.notStrictEqual(jaTool.description, enTool.description, `${name} ja/en 不同`);
+    assert.notStrictEqual(jaTool.description, zhTool.description, `${name} ja/zh 不同`);
+    // description_i18n は出力に漏れていない
+    assert.strictEqual(jaTool.description_i18n, undefined, `${name} ja: description_i18n not leaked`);
+    assert.strictEqual(zhTool.description_i18n, undefined, `${name} zh: description_i18n not leaked`);
+}
+// spriteNameProp は多くの tool で共有 → ja/zh/en で description が異なる
+const moveJa = rJa.find(t => t.name === 'actor_move');
+const moveEn = rEn.find(t => t.name === 'actor_move');
+assert.notStrictEqual(
+    moveJa.input_schema.properties.target.description,
+    moveEn.input_schema.properties.target.description,
+    'spriteNameProp の target description は ja/en で異なる'
+);
+console.log('test8 OK: getRuntimeTools 三语言で actor_move / actor_say / actor_turn が異なる説明になる');
 
 console.log('ALL TESTS PASSED');

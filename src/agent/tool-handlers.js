@@ -6,6 +6,7 @@ import {
     searchSounds, findSoundByName,
     searchBackdrops, findBackdropByName
 } from './library-search';
+import {t as errT} from './error-msgs';
 
 // fetch_url 工具用的代理基础 URL（兼作试用模式相同的 Worker）
 const WORKER_BASE_URL = (() => {
@@ -46,8 +47,10 @@ const MAX_BLOCKS_PER_CALL = 50;
 
 export class ToolError extends Error {}
 
-// 通过 name 或 id 查找目标（角色/舞台）
-const findTarget = (vm, nameOrId) => {
+// 通过 name 或 id 查找目标（角色/舞台）。
+// lang 用于 error-msgs 解析（targetNotFound）。
+// 接受 stage / ステージ / Stage / 空 都视为舞台。
+const findTarget = (vm, nameOrId, lang) => {
     if (!nameOrId || /^(stage|ステージ)$/i.test(nameOrId)) {
         const stage = vm.runtime.getTargetForStage();
         if (stage) return stage;
@@ -59,7 +62,7 @@ const findTarget = (vm, nameOrId) => {
     );
     if (!byName) {
         const names = vm.runtime.targets.filter(t => t.isOriginal).map(t => t.getName());
-        throw new ToolError(`ターゲット "${nameOrId}" が見つかりません。存在するターゲット: ${names.join(', ')}`);
+        throw new ToolError(errT('targetNotFound', lang, nameOrId, names));
     }
     return byName;
 };
@@ -102,11 +105,11 @@ const targetSummary = target => {
     return summary;
 };
 
-const blockGuard = blocksEnabled => {
-    if (!blocksEnabled) throw new ToolError('ブロック操作は現在オフになっています。');
+const blockGuard = (blocksEnabled, lang) => {
+    if (!blocksEnabled) throw new ToolError(errT('blocksDisabled', lang));
 };
 
-export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
+export const createToolHandlers = (vm, {blocksEnabled = true, lang = 'ja'} = {}) => ({
 
     get_project_state: () => ({
         targets: vm.runtime.targets
@@ -115,24 +118,22 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
     }),
 
     search_library: ({kind, query}) => {
-        if (!query) throw new ToolError('query が必要です');
+        if (!query) throw new ToolError(errT('queryRequired', lang));
         switch (kind) {
         case 'sprite': return {results: searchSprites(query)};
         case 'costume': return {results: searchCostumes(query)};
         case 'sound': return {results: searchSounds(query)};
         case 'backdrop': return {results: searchBackdrops(query)};
-        default: throw new ToolError('kind は sprite / costume / sound / backdrop のいずれかです');
+        default: throw new ToolError(errT('invalidKind', lang));
         }
     },
 
     add_sprite: async ({name}) => {
-        blockGuard(blocksEnabled);
+        blockGuard(blocksEnabled, lang);
         const item = findSpriteByName(name);
         if (!item) {
             const candidates = searchSprites(name, 5).map(s => s.name);
-            throw new ToolError(
-                `ライブラリにスプライト "${name}" がありません。` +
-                (candidates.length ? `候補: ${candidates.join(', ')}` : 'search_library で探してください'));
+            throw new ToolError(errT('spriteNotFound', lang, name, candidates));
         }
         await vm.addSprite(JSON.stringify(item));
         const target = vm.editingTarget;
@@ -144,30 +145,28 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
     },
 
     delete_sprite: ({target}) => {
-        blockGuard(blocksEnabled);
-        const t = findTarget(vm, target);
-        if (t.isStage) throw new ToolError('ステージは削除できません');
+        blockGuard(blocksEnabled, lang);
+        const t = findTarget(vm, target, lang);
+        if (t.isStage) throw new ToolError(errT('stageCannotDelete', lang));
         vm.deleteSprite(t.id);
         return {deleted: target};
     },
 
     rename_sprite: ({target, new_name}) => {
-        blockGuard(blocksEnabled);
-        const t = findTarget(vm, target);
-        if (t.isStage) throw new ToolError('ステージの名前は変更できません');
+        blockGuard(blocksEnabled, lang);
+        const t = findTarget(vm, target, lang);
+        if (t.isStage) throw new ToolError(errT('stageCannotRename', lang));
         vm.renameSprite(t.id, new_name);
         return {renamed: new_name};
     },
 
     add_costume: async ({target, costume_name}) => {
-        blockGuard(blocksEnabled);
-        const t = findTarget(vm, target);
+        blockGuard(blocksEnabled, lang);
+        const t = findTarget(vm, target, lang);
         const item = findCostumeByName(costume_name);
         if (!item) {
             const candidates = searchCostumes(costume_name, 5).map(c => c.name);
-            throw new ToolError(
-                `ライブラリにコスチューム "${costume_name}" がありません。` +
-                (candidates.length ? `候補: ${candidates.join(', ')}` : 'search_library で探してください'));
+            throw new ToolError(errT('costumeNotFound', lang, costume_name, candidates));
         }
         const costume = {...item, randomizeName: false};
         await vm.addCostume(item.md5ext, costume, t.id);
@@ -175,35 +174,31 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
     },
 
     add_sound: async ({target, sound_name}) => {
-        blockGuard(blocksEnabled);
-        const t = findTarget(vm, target);
+        blockGuard(blocksEnabled, lang);
+        const t = findTarget(vm, target, lang);
         const item = findSoundByName(sound_name);
         if (!item) {
             const candidates = searchSounds(sound_name, 5).map(s => s.name);
-            throw new ToolError(
-                `ライブラリに音 "${sound_name}" がありません。` +
-                (candidates.length ? `候補: ${candidates.join(', ')}` : 'search_library で探してください'));
+            throw new ToolError(errT('soundNotFound', lang, sound_name, candidates));
         }
         await vm.addSound({...item}, t.id);
         return {added: sound_name, sounds: t.getSounds().map(s => s.name)};
     },
 
     add_backdrop: async ({backdrop_name}) => {
-        blockGuard(blocksEnabled);
+        blockGuard(blocksEnabled, lang);
         const item = findBackdropByName(backdrop_name);
         if (!item) {
             const candidates = searchBackdrops(backdrop_name, 5).map(b => b.name);
-            throw new ToolError(
-                `ライブラリに背景 "${backdrop_name}" がありません。` +
-                (candidates.length ? `候補: ${candidates.join(', ')}` : 'search_library で探してください'));
+            throw new ToolError(errT('backdropNotFound', lang, backdrop_name, candidates));
         }
         await vm.addBackdrop(item.md5ext, {...item});
         return {added: backdrop_name};
     },
 
     set_scripts: async ({target, scripts, append}) => {
-        blockGuard(blocksEnabled);
-        const t = findTarget(vm, target);
+        blockGuard(blocksEnabled, lang);
+        const t = findTarget(vm, target, lang);
         const resolveVariable = makeVariableResolver(vm, t);
 
         // 如果脚本内包含 pen_ 区块，则自动加载画笔扩展
@@ -228,57 +223,61 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
         // 失败时回滚用的快照
         const blocksSnapshot = {...t.blocks._blocks};
         const scriptsSnapshot = [...t.blocks._scripts];
+        let newBlocks;
         try {
-            const newBlocks = buildScripts(scripts, {resolveVariable, dynamicValues});
-
-            // 限制一次可组装的量（防止巨大脚本的一键生成，强制分阶段构建）
-            const realCount = Object.values(newBlocks).filter(b => !b.shadow).length;
-            if (realCount > MAX_BLOCKS_PER_CALL) {
-                throw new ToolError(
-                    `一度に組むブロックが多すぎます(${realCount}個 / 上限${MAX_BLOCKS_PER_CALL}個)。` +
-                    'スクリプトを分けて、2回目以降は append: true で追加してください');
-            }
-
-            // 在替换之前停止引用旧区块的运行中线程
-            //（如果残留，_updateGlows 会尝试给已删除的区块 ID 发光，
-            //  导致每帧都出现"Tried to glow block that does not exist"）
-            vm.runtime.stopForTarget(t);
-            if (append) {
-                // 将新脚本配置在现有脚本下方
-                const existingTops = t.blocks.getScripts()
-                    .map(id => t.blocks.getBlock(id))
-                    .filter(Boolean);
-                const offsetY = existingTops.length
-                    ? Math.max(...existingTops.map(b => b.y || 0)) + 320
-                    : 0;
-                for (const block of Object.values(newBlocks)) {
-                    if (block.topLevel) block.y = (block.y || 0) + offsetY;
-                }
-            } else {
-                t.blocks.deleteAllBlocks();
-            }
-            for (const block of Object.values(newBlocks)) {
-                t.blocks.createBlock(block);
-            }
-            // 清除前一帧的 glow 引用中残留的旧区块 ID
-            vm.runtime._scriptGlowsPreviousFrame = [];
-            vm.setEditingTarget(t.id);
-            vm.emitWorkspaceUpdate();
-            const scriptCount = t.blocks.getScripts().length;
-            return {ok: true, target: t.getName(), appended: !!append, script_count: scriptCount};
+            newBlocks = buildScripts(scripts, {resolveVariable, dynamicValues});
         } catch (e) {
             t.blocks._blocks = blocksSnapshot;
             t.blocks._scripts = scriptsSnapshot;
             t.blocks.resetCache();
-            if (e instanceof BuildError) throw new ToolError(e.message);
+            if (e instanceof BuildError) {
+                throw new ToolError(errT(e.errorKey, lang, ...e.errorArgs));
+            }
             throw e;
         }
+
+        // 限制一次可组装的量（防止巨大脚本的一键生成，强制分阶段构建）
+        const realCount = Object.values(newBlocks).filter(b => !b.shadow).length;
+        if (realCount > MAX_BLOCKS_PER_CALL) {
+            t.blocks._blocks = blocksSnapshot;
+            t.blocks._scripts = scriptsSnapshot;
+            t.blocks.resetCache();
+            throw new ToolError(errT('tooManyBlocks', lang, realCount, MAX_BLOCKS_PER_CALL));
+        }
+
+        // 在替换之前停止引用旧区块的运行中线程
+        //（如果残留，_updateGlows 会尝试给已删除的区块 ID 发光，
+        //  导致每帧都出现"Tried to glow block that does not exist"）
+        vm.runtime.stopForTarget(t);
+        if (append) {
+            // 将新脚本配置在现有脚本下方
+            const existingTops = t.blocks.getScripts()
+                .map(id => t.blocks.getBlock(id))
+                .filter(Boolean);
+            const offsetY = existingTops.length
+                ? Math.max(...existingTops.map(b => b.y || 0)) + 320
+                : 0;
+            for (const block of Object.values(newBlocks)) {
+                if (block.topLevel) block.y = (block.y || 0) + offsetY;
+            }
+        } else {
+            t.blocks.deleteAllBlocks();
+        }
+        for (const block of Object.values(newBlocks)) {
+            t.blocks.createBlock(block);
+        }
+        // 清除前一帧的 glow 引用中残留的旧区块 ID
+        vm.runtime._scriptGlowsPreviousFrame = [];
+        vm.setEditingTarget(t.id);
+        vm.emitWorkspaceUpdate();
+        const scriptCount = t.blocks.getScripts().length;
+        return {ok: true, target: t.getName(), appended: !!append, script_count: scriptCount};
     },
 
     set_sprite_properties: ({target, x, y, size, direction, visible}) => {
-        blockGuard(blocksEnabled);
-        const t = findTarget(vm, target);
-        if (t.isStage) throw new ToolError('ステージには位置などのプロパティを設定できません');
+        blockGuard(blocksEnabled, lang);
+        const t = findTarget(vm, target, lang);
+        if (t.isStage) throw new ToolError(errT('stageCannotSetProperties', lang));
         if (typeof x === 'number' || typeof y === 'number') {
             t.setXY(typeof x === 'number' ? x : t.x, typeof y === 'number' ? y : t.y);
         }
@@ -289,19 +288,19 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
     },
 
     start_project: () => {
-        blockGuard(blocksEnabled);
+        blockGuard(blocksEnabled, lang);
         vm.greenFlag();
-        return {ok: true, message: '緑の旗を押しました(プロジェクト実行中)'};
+        return {ok: true};
     },
 
     stop_project: () => {
-        blockGuard(blocksEnabled);
+        blockGuard(blocksEnabled, lang);
         vm.stopAll();
         return {ok: true};
     },
 
     fetch_url: async ({url}) => {
-        if (!url) throw new ToolError('url が必要です');
+        if (!url) throw new ToolError(errT('urlRequired', lang));
 
         // 将 GitHub 的 URL 转换为允许 CORS 的端点，从浏览器直接获取
         //（因为 Worker 代理需要试用令牌，使用自己的密钥的用户也能运行）
@@ -327,14 +326,12 @@ export const createToolHandlers = (vm, {blocksEnabled = true} = {}) => ({
         try {
             res = await fetch(endpoint, headers ? {headers} : undefined);
         } catch (e) {
-            throw new ToolError(
-                `ネットワークエラー: ${e.message}` +
-                (direct || useProxy ? '' : '(このサイトはブラウザから直接取得できない可能性があります)'));
+            throw new ToolError(errT('networkError', lang, e.message, !(direct || useProxy)));
         }
         if (!res.ok) {
             let errMsg = `HTTP ${res.status}`;
             try { const body = await res.json(); errMsg = body.error || errMsg; } catch { /* ignore */ }
-            throw new ToolError(`取得失敗: ${errMsg} (${endpoint})`);
+            throw new ToolError(errT('fetchFailed', lang, errMsg, endpoint));
         }
         let data;
         if (useProxy) {

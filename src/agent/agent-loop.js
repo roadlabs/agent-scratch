@@ -1,7 +1,7 @@
 // Anthropic Messages API 的手动 tool use 循环
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import {TOOLS, BLOCK_TOOL_NAMES, summarizeToolCall, draftingLabel} from './tools';
+import {getTools, BLOCK_TOOL_NAMES, summarizeToolCall, draftingLabel} from './tools';
 import {getSystemPrompt, getBlockOperationPrompt} from './system-prompt';
 import {createToolHandlers, ToolError} from './tool-handlers';
 import {runActorAgent} from './actor-loop';
@@ -169,8 +169,9 @@ const runOpenAICompatAgent = async ({
         maxRetries: 2, // 为了承受 503 等临时错误（指数退避自动重试）
         ...(stripSdkHeaders ? {defaultHeaders: STRIP_STAINLESS_HEADERS} : {})
     });
-    const handlers = createToolHandlers(vm, {blocksEnabled});
-    const activeTools = blocksEnabled ? TOOLS : TOOLS.filter(t => !BLOCK_TOOL_NAMES.has(t.name));
+    const handlers = createToolHandlers(vm, {blocksEnabled, lang});
+    const localizedTools = getTools(lang);
+    const activeTools = blocksEnabled ? localizedTools : localizedTools.filter(t => !BLOCK_TOOL_NAMES.has(t.name));
     const oaiTools = toOpenAITools(activeTools);
     const systemMessages = [
         {role: 'system', content: getSystemPrompt(lang)},
@@ -284,7 +285,11 @@ const runOpenAICompatAgent = async ({
             let isError = false;
             try {
                 const handler = handlers[tc.function.name];
-                if (!handler) throw new ToolError(`未知のツール: ${tc.function.name}`);
+                if (!handler) throw new ToolError(
+                    lang === 'zh' ? `未知的工具: ${tc.function.name}` :
+                    lang === 'en' ? `Unknown tool: ${tc.function.name}` :
+                    `未知のツール: ${tc.function.name}`
+                );
                 result = await handler(input);
             } catch (e) {
                 isError = true;
@@ -408,14 +413,15 @@ export const runAgent = async ({
         timeout: REQUEST_TIMEOUT_MS,
         maxRetries: 1
     });
-    const handlers = createToolHandlers(vm, {blocksEnabled});
+    const handlers = createToolHandlers(vm, {blocksEnabled, lang});
 
     // 系统提示词和工具定义是固定的 → prompt caching
     const system = [
         {type: 'text', text: getSystemPrompt(lang), cache_control: {type: 'ephemeral'}},
         {type: 'text', text: getBlockOperationPrompt(blocksEnabled, lang)}
     ];
-    const activeTools = blocksEnabled ? TOOLS : TOOLS.filter(t => !BLOCK_TOOL_NAMES.has(t.name));
+    const localizedTools = getTools(lang);
+    const activeTools = blocksEnabled ? localizedTools : localizedTools.filter(t => !BLOCK_TOOL_NAMES.has(t.name));
     const tools = activeTools.map((tool, i) =>
         (i === activeTools.length - 1 ? {...tool, cache_control: {type: 'ephemeral'}} : tool)
     );
@@ -544,7 +550,11 @@ export const runAgent = async ({
             let isError = false;
             try {
                 const handler = handlers[block.name];
-                if (!handler) throw new ToolError(`未知のツール: ${block.name}`);
+                if (!handler) throw new ToolError(
+                    lang === 'zh' ? `未知的工具: ${block.name}` :
+                    lang === 'en' ? `Unknown tool: ${block.name}` :
+                    `未知のツール: ${block.name}`
+                );
                 result = await handler(block.input);
             } catch (e) {
                 isError = true;
