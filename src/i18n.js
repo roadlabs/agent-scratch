@@ -136,7 +136,7 @@ export const STRINGS = {
         hintSuffix: ' 获取。',
         // Agent 模式切换芯片
         modeProgram: '编程',
-        modeActor: '演员',
+        modeActor: '操控',
         modeProgramHint: '通过 DSL 创作 Scratch 积木脚本的模式',
         modeActorHint: '在实时舞台上直接操控角色的模式',
         modeSwitchToActor: '（已切换到演员模式——你将直接操控角色）',
