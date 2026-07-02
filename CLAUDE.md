@@ -67,10 +67,10 @@ VibeCat 提供两种 agent 范式，通过 chat panel header 的「Program / Act
 **Actor 模式的关键设计**（遵循"用逻辑确保可靠"）：
 
 - **写入即回显**：每个写入动作的 handler 返回 `{ok, action, target, state}`，`state` 是受影响 sprite 的 post-snapshot（位置/方向/コスチューム/吹き出し等）。LLM 不可能基于陈旧记忆决策 —— closed feedback loop 由 handler 返回值强制，而非提示词请求。
-- **actor_ 前缀隔离命名空间**：与程序员模式的工具集（`set_scripts` 等）完全独立，避免碰撞。actor 工具列表里没有 `set_scripts`，强化"actor 不创作积木脚本"的边界。
-- **三重防御 actor 不创作积木**：(1) 工具列表里没有 `set_scripts` (2) 系统提示词中明确禁止 (3) `actor_` 处理器只调用运行时方法（`setXY` / `say` 等），不接触 `t.blocks`。
-- **资产/克隆/执行控制**共用 `createToolHandlers` 的逻辑（通过 `createToolHandlers(vm, {blocksEnabled: false})` 复用，actor 模式下 set_scripts 等被排除）。返回结果附 `state` 字段回显全目标列表，让 LLM 看到变更后的世界。
-- **actor 模式强制 `blocksEnabled=false`**（即使 UI 切换了 toggle，handler 端也拒绝积木操作）。
+- **actor_ 前缀隔离命名空间**：与程序员模式的工具集（`set_scripts` 等）完全独立，避免碰撞。actor_ 工具列表里没有 `set_scripts`，强化"操控模式不创作积木脚本"的边界。
+- **三重防御操控模式不创作积木**：(1) 工具列表里没有 `set_scripts` (2) 系统提示词中明确禁止 (3) `actor_` 处理器只调用运行时方法（`setXY` / `say` 等），不接触 `t.blocks`。
+- **资产/克隆/执行控制**共用 `createToolHandlers` 的逻辑（通过 `createToolHandlers(vm, {blocksEnabled: false})` 复用，操控模式下 set_scripts 等被排除）。返回结果附 `state` 字段回显全目标列表，让 LLM 看到变更后的世界。
+- **操控模式强制 `blocksEnabled=false`**（即使 UI 切换了 toggle，handler 端也拒绝积木操作）。
 
 ### 多语言支持 (`src/i18n.js`)
 
