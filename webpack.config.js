@@ -79,7 +79,7 @@ module.exports = (env, argv) => ({
         }),
         new HtmlWebpackPlugin({
             template: 'src/index.html',
-            title: 'VibeCat'
+            title: 'VibeCatClaw'
         }),
         // scratch-gui の prebuilt dist が実行時に読み込むチャンク・静的アセットを
         // 出力ディレクトリへコピーする(publicPath 相対で解決される)

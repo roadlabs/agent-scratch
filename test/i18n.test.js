@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import assert from 'assert';
 import {localeToLang, STRINGS, SUGGESTIONS_BY_LANG, draftingChars, errorPrefix, pricingLabel} from '../src/i18n.js';
+import {ERROR_MSGS, t as errT} from '../src/agent/error-msgs.js';
 
 // --- localeToLang: 日本語系は ja、中文系は zh、それ以外は en ---
 assert.strictEqual(localeToLang('ja'), 'ja');
@@ -48,5 +49,30 @@ assert.strictEqual(errorPrefix('zh', 'X'), '错误: X');
 assert.ok(pricingLabel('ja', 'Anthropic').includes('料金表'));
 assert.ok(pricingLabel('en', 'Anthropic').includes('pricing'));
 assert.ok(pricingLabel('zh', 'Anthropic').includes('价格表'));
+
+// --- error-msgs: 集中错误目录的三语对齐 ---
+// 所有静态条目（function 除外）都有 ja/en/zh 三个非空字符串。
+for (const [key, entry] of Object.entries(ERROR_MSGS)) {
+    if (typeof entry === 'function') continue; // 参数化条目跳过
+    assert.ok(entry.ja && typeof entry.ja === 'string', `ERROR_MSGS.${key}.ja 非空`);
+    assert.ok(entry.en && typeof entry.en === 'string', `ERROR_MSGS.${key}.en 非空`);
+    assert.ok(entry.zh && typeof entry.zh === 'string', `ERROR_MSGS.${key}.zh 非空`);
+    assert.notStrictEqual(entry.ja, entry.en, `ERROR_MSGS.${key} ja/en 不同`);
+    assert.notStrictEqual(entry.ja, entry.zh, `ERROR_MSGS.${key} ja/zh 不同`);
+}
+
+// t() helper: 三语各自正确解析；未知 lang 走 ja fallback；未知 key 返回占位
+assert.strictEqual(errT('stageCannotMove', 'ja'), ERROR_MSGS.stageCannotMove.ja);
+assert.strictEqual(errT('stageCannotMove', 'en'), ERROR_MSGS.stageCannotMove.en);
+assert.strictEqual(errT('stageCannotMove', 'zh'), ERROR_MSGS.stageCannotMove.zh);
+assert.strictEqual(errT('stageCannotMove', 'fr'), ERROR_MSGS.stageCannotMove.ja);
+// 未知 key 返回占位（包含 key 本身便于排查）
+assert.ok(errT('nonsenseKey_xyz', 'ja').includes('nonsenseKey_xyz'));
+// 参数化条目（函数形式）按参数填充
+assert.ok(errT('targetNotFound', 'en', 'Foo', ['Stage', 'Cat']).includes('Foo'));
+assert.ok(errT('targetNotFound', 'en', 'Foo', ['Stage', 'Cat']).includes('Stage'));
+assert.ok(errT('targetNotFound', 'en', 'Foo', ['Stage', 'Cat']).includes('Cat'));
+assert.ok(errT('targetNotFound', 'ja', 'Foo', ['Stage', 'Cat']).includes('Foo'));
+assert.ok(errT('targetNotFound', 'zh', 'Foo', ['Stage', 'Cat']).includes('Foo'));
 
 console.log('i18n ALL TESTS PASSED');

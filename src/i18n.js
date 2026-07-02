@@ -47,7 +47,14 @@ export const STRINGS = {
         openaiDesc: 'OpenAI API キーを入力してください。',
         geminiDesc: 'Google Gemini API キーを入力してください。',
         hintPrefix: 'API キーは ',
-        hintSuffix: ' で取得できます。'
+        hintSuffix: ' で取得できます。',
+        // Agent モード切替チップ
+        modeProgram: 'プログラム',
+        modeActor: 'アクター',
+        modeProgramHint: 'Scratch 積木スクリプトを DSL で創作するモード',
+        modeActorHint: 'リアルタイムでスプライトを直接操作するモード',
+        modeSwitchToActor: '（アクターモードに切り替えました。スプライトを直接操作します）',
+        modeSwitchToProgrammer: '（プログラマーモードに戻りました）'
     },
     en: {
         // Chat panel
@@ -83,7 +90,14 @@ export const STRINGS = {
         openaiDesc: 'Enter your OpenAI API key.',
         geminiDesc: 'Enter your Google Gemini API key.',
         hintPrefix: 'You can get an API key at ',
-        hintSuffix: '.'
+        hintSuffix: '.',
+        // Agent mode switch chip
+        modeProgram: 'Program',
+        modeActor: 'Actor',
+        modeProgramHint: 'Author Scratch block scripts via DSL',
+        modeActorHint: 'Directly drive sprites on the live stage',
+        modeSwitchToActor: '(Switched to Actor mode — you will directly drive sprites)',
+        modeSwitchToProgrammer: '(Switched back to Programmer mode)'
     },
     zh: {
         // 聊天面板
@@ -119,7 +133,14 @@ export const STRINGS = {
         openaiDesc: '请输入 OpenAI API 密钥。',
         geminiDesc: '请输入 Google Gemini API 密钥。',
         hintPrefix: 'API 密钥可在 ',
-        hintSuffix: ' 获取。'
+        hintSuffix: ' 获取。',
+        // Agent 模式切换芯片
+        modeProgram: '编程',
+        modeActor: '操控',
+        modeProgramHint: '通过 DSL 创作 Scratch 积木脚本的模式',
+        modeActorHint: '在实时舞台上直接操控角色的模式',
+        modeSwitchToActor: '（已切换到操控模式——你将直接操控角色）',
+        modeSwitchToProgrammer: '（已切回编程模式）'
     }
 };
 

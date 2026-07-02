@@ -26,6 +26,19 @@ npm start              # http://localhost:8602/
 - 不要 push 到已合并 PR 的分支。创建新分支并提交 PR
 - 分支命名：使用 `feat/`、`fix/`、`refactor/` 等前缀
 
+### 实施流程
+
+- **所有非平凡的代码改动都在新分支上进行**（不直接修改 main）。实施开始前先创建并切换到目标分支（`git checkout -b <type>/<name>`），所有 commit 都在该分支上累积。
+- **按逻辑阶段分多个 commit**，便于 review：例如 `feat: 核心实现` → `feat: UI 集成` → `docs: 更新 CLAUDE.md` → `test: 添加测试`。
+- **AI 代理不应主动 push** 或创建 PR，除非用户明确指示（按 CLAUDE.md「分支・PR 规则」）。完成后等待用户审查。
+
+### 测试与评价
+
+- **完整的测试与评价 pass 应通过独立的子代理（sub-agent）执行**，不在主代理的内联流程里直接运行。这是职责分离：主代理负责实现，子代理负责独立验证（获得外部视角、避免确认偏差）。
+- 适用场景：PR 前的自检、新增功能完成后的回归验证、任何需要跑完整 `npm test` + `npm run build` 的场合。
+- 子代理任务应包含：(1) 运行 `npm test` + `npm run build` (2) 静态检查（`node test/static-checks.js`）(3) 代码审查（聚焦设计原则、回归风险）(4) 输出可合并 / 阻塞 / 警告的明确判定。
+- 主代理仍可"快速"运行单条命令做即时确认（如 `npx esbuild --check`），但完整的测试 pass 一定要走子代理。
+
 ## 设计方针
 
 ### 用逻辑确保可靠（不依赖系统提示词）
@@ -42,11 +55,28 @@ AI 的行为如果只依赖系统提示词的指示会留下随机性。**能强
 
 ## 架构
 
+### Agent 模式：Programmer 与 Actor 两种范式
+
+VibeCat 提供两种 agent 范式，通过 chat panel header 的「Program / Actor」芯片切换：
+
+- **Programmer 模式（默认）**：`set_scripts` DSL 创作 Scratch 积木脚本，由用户按绿旗执行。工具集定义在 `src/agent/tools.js`，处理器在 `src/agent/tool-handlers.js`。这是 VibeCat 最初始的设计。
+- **Actor 模式（Runtime Actor）**：LLM 作为运行时驱动者，通过原子动作（`actor_move` / `actor_set_position` / `actor_say` 等）连续观察 VM 状态、决策、执行。每次写入动作的 handler 强制回显 post-state（`{ok, action, target, state}`），形成 closed feedback loop。工具集定义在 `src/agent/runtime-tools.js`，处理器在 `src/agent/runtime-handlers.js`，独立的 agent 循环在 `src/agent/actor-loop.js`。
+
+模式分发在 `runAgent` 入口：`runAgent({mode='programmer'|'actor', ...})`。两种模式共享 `apiMessagesRef`（Anthropic 格式对话历史），切换时往历史中注入一行 user-content 系统提醒（`modeSwitchToActor` / `modeSwitchToProgrammer`），避免 LLM 沿用旧模式思路。
+
+**Actor 模式的关键设计**（遵循"用逻辑确保可靠"）：
+
+- **写入即回显**：每个写入动作的 handler 返回 `{ok, action, target, state}`，`state` 是受影响 sprite 的 post-snapshot（位置/方向/コスチューム/吹き出し等）。LLM 不可能基于陈旧记忆决策 —— closed feedback loop 由 handler 返回值强制，而非提示词请求。
+- **actor_ 前缀隔离命名空间**：与程序员模式的工具集（`set_scripts` 等）完全独立，避免碰撞。actor_ 工具列表里没有 `set_scripts`，强化"操控模式不创作积木脚本"的边界。
+- **三重防御操控模式不创作积木**：(1) 工具列表里没有 `set_scripts` (2) 系统提示词中明确禁止 (3) `actor_` 处理器只调用运行时方法（`setXY` / `say` 等），不接触 `t.blocks`。
+- **资产/克隆/执行控制**共用 `createToolHandlers` 的逻辑（通过 `createToolHandlers(vm, {blocksEnabled: false})` 复用，操控模式下 set_scripts 等被排除）。返回结果附 `state` 字段回显全目标列表，让 LLM 看到变更后的世界。
+- **操控模式强制 `blocksEnabled=false`**（即使 UI 切换了 toggle，handler 端也拒绝积木操作）。
+
 ### 多语言支持 (`src/i18n.js`)
 
 - **UI 和 AI 响应的语言跟随 Scratch 的语言（`vm.getLocale()`）**。`localeToLang()` 将日语系（`ja` / `ja-Hira`）→ `'ja'`、中文系（`zh*`）→ `'zh'`、其他 → `'en'`。判断的单一真实来源是 `vm.getLocale()`，`app.jsx` 的 `useScratchLang` 通过轮询分发 `lang`（因为 VM 不发出 locale 更改事件）。
-- **修改或添加 UI 文案时，必须同时更新日英两种语言（`STRINGS.ja` 和 `STRINGS.en`，现在还有 `STRINGS.zh`）**。只添加一种会导致英语 UI 中混入日语/出现 `undefined`。`test/i18n.test.js` 验证两种语言的键集合一致，所以不要在 JSX 中硬编码日语，而是一定要通过 `STRINGS[lang]` 获取。工具进度标签（`tools.js` 的 `draftingLabel`/`summarizeToolCall`）、系统提示词（`system-prompt.js` 的 `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`/`SYSTEM_PROMPT_ZH`）、错误消息（`agent-loop.js`）同样要准备多种语言版本。
-- **AI 响应语言不靠提示词请求，而是通过 `lang` 替换系统提示词本身来保证**（"用逻辑确保可靠"）。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)`。
+- **修改或添加 UI 文案时，必须同时更新日英两种语言（`STRINGS.ja` 和 `STRINGS.en`，现在还有 `STRINGS.zh`）**。只添加一种会导致英语 UI 中混入日语/出现 `undefined`。`test/i18n.test.js` 验证两种语言的键集合一致，所以不要在 JSX 中硬编码日语，而是一定要通过 `STRINGS[lang]` 获取。工具进度标签（`tools.js` 的 `draftingLabel`/`summarizeToolCall`、`runtime-tools.js` 的 `runtimeDraftingLabel`/`summarizeActorToolCall`）、系统提示词（`system-prompt.js` 的 `SYSTEM_PROMPT_JA`/`SYSTEM_PROMPT_EN`/`SYSTEM_PROMPT_ZH`、`runtime-system-prompt.js` 的 actor prompt）、错误消息（`agent-loop.js`）同样要准备多种语言版本。
+- **AI 响应语言不靠提示词请求，而是通过 `lang` 替换系统提示词本身来保证**（"用逻辑确保可靠"）。`runAgent({lang})` → `getSystemPrompt(lang)` / `getBlockOperationPrompt(blocksEnabled, lang)` / `getRuntimeActorSystemPrompt(lang)`。
 
 ### scratch-gui 菜单栏翻译
 
@@ -124,6 +154,118 @@ useEffect(() => {
 
 - 正确：`vm.extensionManager.isExtensionLoaded('pen')`
 - 错误：`vm.runtime._extensions.isExtensionLoaded('pen')` → `_extensions` 不存在
+
+### scratch-vm RenderedTarget 公开 API 的实际边界（实测，非文档假设）
+
+很多直觉上"应该存在"的方法实际不在 RenderedTarget 上 —— 它们是 `scratch3_motion.js` / `scratch3_looks.js` / `scratch3_pen/` 等文件里的 block primitive，签名是 `(args, util)` 而非实例方法。
+
+**实测可用的 RenderedTarget 公开方法只有 9 个**：
+
+| 方法 | 用途 |
+|---|---|
+| `setXY(x, y)` | 绝对位置（`force` 参数是内部用） |
+| `setDirection(d)` | 绝对方向（90=右、0=上、-90=左、180=下） |
+| `setVisible(b)` | 显示/隐藏 |
+| `setSize(s)` | 大小（百分比） |
+| `setCostume(idx)` | costume 切换（必须传数字索引，名称查找要自己做） |
+| `goToFront()` / `goToBack()` | 图层（注意不是 `goToLayer`） |
+| `getCustomState(key)` / `setCustomState(key, value)` | 自定义状态存储（base 类的 `_customState[key]`） |
+
+**❌ 不在 RenderedTarget 上的"常识方法"**：`changeX` / `changeY` / `turnRight` / `turnLeft` / `moveSteps` / `goTo` / `glideTo` / `pointTowards` / `say` / `think` / `stopSpeaking` / `sayingText` / `thinkingText` / `bubbleType` / `goToLayer` 等。**遇到这些需求，要么自己计算（用 `setXY` + `setDirection`）+ 读取 `getCustomState('Scratch.looks').text/.type`**，要么**走 block primitive 路径**（见下条）。
+
+### Block Primitive 调用模式（绕过 event listener）
+
+`runtime.getOpcodeFunction(opcode)` 返回**绑定到 packageObject 的函数**，可以直接调用：
+
+```js
+const fn = vm.runtime.getOpcodeFunction('looks_say');
+fn({MESSAGE: text}, {target, runtime: vm.runtime});  // util 对象最少需要 target + runtime
+```
+
+这一路径比 `runtime.emit('SAY', target, type, text)` 更可靠 —— 避免 listener 绑定时机、多个 runtime 实例等边界情况。`actor_say` / `actor_think` / 所有扩展（pen / music / text2speech / translate）的 primitive 都走这条路。
+
+### Scratch VM 角度数学
+
+`pointTowards` 的核心算法（在 actor-loop 中用）：
+
+```js
+// 把 dx, dy 转换为 Scratch 方向（90=右、0=上、180=下）
+const direction = 90 - radToDeg(Math.atan2(dy, dx));
+```
+
+注意 Scratch 的"上"是 0 度，跟一般数学的 90 度相反。`glide` 不在 RenderedTarget 上，需要自实现（用 `setInterval` 推进 `setXY`）。
+
+### 扩展加载的时序陷阱
+
+`vm.extensionManager.loadExtensionURL('pen')` resolve 时，扩展已经**同步**注册到 `runtime._primitives`（因为 dispatch 对本地服务直接返回 `Promise.resolve(result)`，且 extension-manager.js 的 `_registerExtensionInfo` 内部同步调用 `_registerExtensionPrimitives`）。所以实际上 `waitForPrimitive` 一次轮询就能拿到 —— 但保留 2 秒轮询作为防御性兜底。
+
+### 扩展 opcode 必须带扩展 ID 前缀（关键 bug）
+
+scratch-vm 在注册扩展 primitive 时把 opcode 用 `${extensionId}_${opcode}` 前缀化（runtime.js:1082）：
+
+```js
+const extendedOpcode = `${categoryInfo.id}_${blockInfo.opcode}`;
+this._primitives[opcode] = convertedBlock.info.func;
+```
+
+所以 pen 扩展的 `penDown` 注册到 `runtime._primitives['pen_penDown']` 而不是 `runtime._primitives['penDown']`。
+
+❌ 错误：用裸 opcode 查找 → 永远找不到
+```js
+const fn = vm.runtime.getOpcodeFunction('penDown');  // undefined!
+```
+
+✅ 正确：用带前缀的 extended opcode
+```js
+const extendedOpcode = `${extensionId}_${opcode}`;
+const fn = vm.runtime.getOpcodeFunction(extendedOpcode);
+```
+
+影响所有 4 类扩展工具：`actor_pen_*` / `actor_play_*` / `actor_speak` / `actor_translate` 等。如果不修复，扩展会"已加载"但"primitive 找不到"，agent 会反复重试然后放弃。
+
+### 显式扩展加载工具 `actor_ensure_extension`
+
+给 agent 暴露 `actor_ensure_extension(extension_id)` 工具（接受 `pen` / `music` / `text2speech` / `translate`），让 agent 在用扩展工具**之前**显式加载。比让 agent 间接踩"扩展加载了但 primitive 找不到"的坑要好。也可以让 agent 直接调扩展工具（`callExtensionPrimitive` 内部会自动加载 + 等 primitive），但显式更可调试、错误信息更清晰。
+
+### Actor 模式的语言策略
+
+- **System prompt** 跟随**用户输入消息的语言**（用 `detectUserLanguage` 字符集检测），**不是** Scratch locale
+- **LLM 回复语言**跟随**用户输入消息**的语言
+
+三套语言的 system prompt 都明确这条：
+
+```js
+// 字符集检测（runtime-system-prompt.js）
+export const detectUserLanguage = text => {
+    let hasHiraganaKatakana = false, hasHan = false;
+    for (const ch of text) {
+        const code = ch.codePointAt(0);
+        if (code >= 0x3040 && code <= 0x309F) hasHiraganaKatakana = true;  // 平假名
+        else if (code >= 0x30A0 && code <= 0x30FF) hasHiraganaKatakana = true;  // 片假名
+        else if (code >= 0x4E00 && code <= 0x9FFF) hasHan = true;  // CJK 统一汉字
+    }
+    if (hasHiraganaKatakana) return 'ja';
+    if (hasHan) return 'zh';
+    return 'en';
+};
+
+// actor-loop.js 中调用
+const userLang = detectUserLanguage(userText) || lang;  // fallback to Scratch locale
+const system = getRuntimeActorSystemPrompt(userLang);
+```
+
+**绕过模型日语偏向的强化**（实测 deepseek-chat 等模型有内置日语偏向，仅靠"用用户语言"指引不够）：
+
+1. 每版 prompt 开头加 `[OUTPUT LANGUAGE: 简体中文 (zh)]` 显式标记
+2. 把"回复语言"章节提到第二位，用 ⚠️ 强调
+3. 加入明确的判断规则表（汉字-only → 中文；含假名 → 日文；纯 ASCII → 英文）
+4. 明确禁止（"绝对不能用 X 语言除非用户用 X"）
+
+### Actor 工具的前缀命名空间
+
+`actor_` 前缀（48 个 actor_ 工具）隔离了与 Programmer 模式 `set_scripts` 等工具的命名空间。两个好处：
+1. 两个模式能并存且互不污染（`runAgent({mode='programmer'|'actor'})` 分发）
+2. 模式切换时缓存断点（cache_control）的语义边界清晰 —— actor tools / programmer tools 分别占一个 cache 段
 
 ### CI（GitHub Actions）
 

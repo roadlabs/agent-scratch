@@ -29,6 +29,46 @@
     padding: 2px;
 }
 
+/* Agent 模式切换芯片（Program / Actor） */
+.as-chat-mode-group {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    padding: 2px;
+    margin: 0 6px;
+    gap: 2px;
+}
+
+.as-chat-mode-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 11px;
+    font-weight: bold;
+    padding: 3px 9px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    line-height: 1.2;
+}
+
+.as-chat-mode-btn:hover:not(.active):not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+}
+
+.as-chat-mode-btn.active {
+    background: white;
+    color: hsla(260, 60%, 40%, 1);
+    cursor: default;
+}
+
+.as-chat-mode-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .as-chat-toggle-row {
     display: flex;
     align-items: center;
