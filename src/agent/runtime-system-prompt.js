@@ -3,7 +3,7 @@
 // 设计原则：
 //   - 不靠"请每次调用后调用 get_state"的提示词请求，而是通过工具返回值强制回显 post-state。
 //     但仍要在提示词中强调：状态以工具结果中的 state 字段为准，不依赖记忆。
-//   - 明确禁止 set_scripts 风格的 DSL 积木创作（actor 模式定位是运行时驱动者，不是程序员）。
+//   - 明确禁止 set_scripts 风格的 DSL 积木创作（操控模式定位是运行时驱动者，不是程序员）。
 //   - 多语言策略与现有 system-prompt.js 一致（参考 CLAUDE.md「多语言支持」）。
 
 export const RUNTIME_ACTOR_SYSTEM_PROMPT_JA = `[OUTPUT LANGUAGE: 日本語 (ja)]

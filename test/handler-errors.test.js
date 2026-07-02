@@ -92,7 +92,7 @@ const assertRuntimeLocalizedAsync = async (action, langs, label) => {
     assertLocalizedSync(h => h.search_library({kind: 'invalid', query: 'foo'}), ['ja', 'en', 'zh'], 'invalidKind');
     console.log('test1 OK: 程序员模式 ToolError 6 件 × 3 lang すべてメッセージあり');
 
-    // --- actor 模式: 7 件 × 3 lang ---
+    // --- 操控模式: 7 件 × 3 lang ---
     assertRuntimeLocalized(h => h.actor_move({target: 'Stage', dx: 1, dy: 0}), ['ja', 'en', 'zh'], 'stageCannotMove');
     assertRuntimeLocalized(h => h.actor_turn({target: 'Stage', degrees: 10}), ['ja', 'en', 'zh'], 'stageCannotTurn');
     assertRuntimeLocalized(h => h.actor_set_position({target: 'Stage', x: 0, y: 0}), ['ja', 'en', 'zh'], 'stageCannotSetPosition');
@@ -100,7 +100,7 @@ const assertRuntimeLocalizedAsync = async (action, langs, label) => {
     assertRuntimeLocalized(h => h.actor_set_size({target: 'Stage', size: 50}), ['ja', 'en', 'zh'], 'stageCannotSetSize');
     assertRuntimeLocalized(h => h.actor_set_layer({target: 'Cat', layer: 'middle'}), ['ja', 'en', 'zh'], 'invalidLayer');
     await assertRuntimeLocalizedAsync(h => h.actor_ensure_extension({extension_id: 'bogus'}), ['ja', 'en', 'zh'], 'invalidExtensionId');
-    console.log('test2 OK: actor 模式 ToolError 7 件 × 3 lang すべてメッセージあり');
+    console.log('test2 OK: 操控模式 ToolError 7 件 × 3 lang すべてメッセージあり');
 
     // --- BuildError → t() で localized ---
     for (const lang of ['ja', 'en', 'zh']) {

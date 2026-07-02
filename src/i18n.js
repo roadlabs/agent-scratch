@@ -139,7 +139,7 @@ export const STRINGS = {
         modeActor: '操控',
         modeProgramHint: '通过 DSL 创作 Scratch 积木脚本的模式',
         modeActorHint: '在实时舞台上直接操控角色的模式',
-        modeSwitchToActor: '（已切换到演员模式——你将直接操控角色）',
+        modeSwitchToActor: '（已切换到操控模式——你将直接操控角色）',
         modeSwitchToProgrammer: '（已切回编程模式）'
     }
 };
